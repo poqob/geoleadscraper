@@ -10,7 +10,10 @@ that runs entirely in your browser, this is it: search any place on Google Maps,
 hit **Start extracting**, and download a clean spreadsheet of business leads —
 names, addresses, phone numbers, websites, ratings, reviews and more.
 
+**🌐 Website & docs: [geoleadscraper.com](https://geoleadscraper.com/)** — install guide, how-to and FAQ.
+
 <p>
+  <a href="https://geoleadscraper.com/"><img alt="Website" src="https://img.shields.io/badge/website-geoleadscraper.com-0a7cff.svg"></a>
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg">
   <img alt="Manifest V3" src="https://img.shields.io/badge/Chrome-MV3-blue.svg">
   <img alt="Free & Open Source" src="https://img.shields.io/badge/free-open--source-brightgreen.svg">
@@ -59,6 +62,8 @@ pnpm build:extension
 Then in Chrome: open `chrome://extensions` → enable **Developer mode** →
 **Load unpacked** → select `apps/extension/dist`.
 (Prefer not to build? Grab the packaged `dist.zip` from the repo and load that.)
+
+📖 Step-by-step install guide with screenshots: **[geoleadscraper.com/install](https://geoleadscraper.com/install)**.
 
 Open Google Maps, search for anything (e.g. *"coffee shops in Berlin"*), click
 **Start extracting**, then **Export** to download your CSV. The extension works
@@ -124,6 +129,11 @@ free google maps scraper · google maps scraper chrome extension · google maps
 data extractor · scrape google maps · google maps lead generation · business
 leads scraper · yandex maps scraper · 2gis scraper · email & phone scraper ·
 export google maps to csv/excel · open-source web scraper · no API key.
+
+## Links
+- 🌐 Website & docs: **[geoleadscraper.com](https://geoleadscraper.com/)**
+- 📖 How to use: [geoleadscraper.com/how-to-use](https://geoleadscraper.com/how-to-use)
+- ❓ FAQ: [geoleadscraper.com/faq](https://geoleadscraper.com/faq)
 
 ## License
 [MIT](./LICENSE) — free for personal and commercial use.
