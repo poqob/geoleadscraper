@@ -1,0 +1,37 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*"],
+  "globalEnv": ["BACKEND_URL", "VITE_BACKEND_URL"],
+  "tasks": {
+    "ready": {
+      "outputs": ["dist/**", "build/**"]
+    },
+    "dev": {
+      "outputs": ["dist/**", "build/**"],
+      "persistent": true
+    },
+    "build": {
+      "dependsOn": ["^build", "ready"],
+      "outputs": ["../../dist/**", "dist/**", "build/**"]
+    },
+    "type-check": {
+      "cache": false
+    },
+    "lint": {
+      "cache": false
+    },
+    "lint:fix": {
+      "cache": false
+    },
+    "prettier": {
+      "cache": false
+    },
+    "test": {
+      "dependsOn": ["^test", "^build"],
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

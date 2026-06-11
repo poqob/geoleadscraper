@@ -1,0 +1,1 @@
+a chrome extension that allows users to gather information about companies from google maps, yandex maps, and gis.

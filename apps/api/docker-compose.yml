@@ -1,0 +1,17 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: geoleadscraper-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5050}:5050"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 5050
+      NODE_ENV: production
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-60}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-1 minute}
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser

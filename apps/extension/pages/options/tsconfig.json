@@ -1,0 +1,14 @@
+{
+  "extends": "@chrome-extension/tsconfig/base",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@src/*": ["src/*"]
+    },
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "types": ["chrome", "vite/client"]
+  },
+
+  "include": ["src"]
+}

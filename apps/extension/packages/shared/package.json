@@ -1,0 +1,35 @@
+{
+  "name": "@chrome-extension/shared",
+  "version": "0.0.1",
+  "description": "chrome extension shared code",
+  "private": true,
+  "sideEffects": false,
+  "files": [
+    "dist/**"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "index.ts",
+  "scripts": {
+    "clean": "rimraf ./dist",
+    "build:esm": "tsc --module es2015 --target es5 --outDir dist/esm",
+    "build:cjs": "tsc --module commonjs --target es5 --outDir dist/cjs",
+    "ready": "pnpm build:esm && pnpm build:cjs",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "pnpm lint --fix",
+    "prettier": "prettier . --write --ignore-path ../../.prettierignore",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@chrome-extension/tsconfig": "workspace:*"
+  },
+  "dependencies": {
+    "@radix-ui/react-switch": "^1.2.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.13",
+    "lucide-react": "^0.468.0",
+    "tailwind-merge": "^2.5.5",
+    "xlsx": "^0.18.5"
+  }
+}

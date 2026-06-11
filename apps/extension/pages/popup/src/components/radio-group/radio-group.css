@@ -1,0 +1,38 @@
+/* reset */
+button {
+  all: unset;
+}
+
+.radio-group-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.radio-group-item {
+  @apply w-[14px] h-[14px] cursor-pointer rounded-full bg-white border border-solid border-neutral-500 cursor-pointer;
+}
+.radio-group-item:hover {
+  @apply border-black;
+}
+
+.radio-group-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.radio-group-indicator::after {
+  @apply bg-black;
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.radio-group-label {
+  @apply text-neutral-500 text-sm cursor-pointer pl-2;
+}

@@ -1,0 +1,27 @@
+# dependencies
+**/node_modules
+
+# build output
+**/dist
+**/build
+**/.turbo
+**/coverage
+
+# env
+**/.env
+**/.env.*
+!**/.env.example
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# docker volumes
+postgres/
+
+# editor / os
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json

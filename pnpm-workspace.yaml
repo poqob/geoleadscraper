@@ -1,0 +1,11 @@
+packages:
+  - "apps/api"
+  - "apps/extension"
+  - "apps/extension/chrome-extension"
+  - "apps/extension/pages/*"
+  - "apps/extension/packages/*"
+
+onlyBuiltDependencies:
+  - esbuild
+  - puppeteer
+  - "@swc/core"

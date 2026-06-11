@@ -1,0 +1,23 @@
+# dependencies
+**/node_modules
+
+# testing
+**/coverage
+
+# build
+**/dist
+**/build
+
+# env
+**/.env.*
+.env
+!.env.example
+
+# etc
+.DS_Store
+.idea
+**/.turbo
+
+# compiled
+chrome-extension/public/manifest.json
+/.trash

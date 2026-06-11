@@ -1,0 +1,27 @@
+{
+  "name": "geoleadscraper",
+  "version": "1.0.0",
+  "description": "Open-source browser extension to scrape business data from Google Maps, Yandex Maps and 2GIS, with an optional self-hosted backend for website contact enrichment.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@9.4.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "turbo build",
+    "build:extension": "pnpm --filter mapscan_extension build:local",
+    "build:api": "pnpm --filter mapscan_api build",
+    "dev:extension": "pnpm --filter mapscan_extension start:dev",
+    "dev:api": "pnpm --filter mapscan_api start:dev",
+    "lint": "turbo lint --continue",
+    "type-check": "turbo type-check",
+    "test": "turbo test",
+    "clean": "turbo clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.7",
+    "turbo": "^2.3.0"
+  }
+}

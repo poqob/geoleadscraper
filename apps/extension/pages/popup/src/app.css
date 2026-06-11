@@ -1,0 +1,48 @@
+@import '@chrome-extension/shared/styles/styles.css';
+
+body {
+  @apply relative w-[420px] h-auto break-normal whitespace-normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.container {
+  @apply relative px-3;
+}
+
+.app {
+  @apply relative w-full min-h-[120px] flex flex-col bg-white;
+}
+
+.app-header {
+  @apply w-full h-[50px] border-t border-neutral-200;
+}
+
+.app-footer {
+  @apply w-full h-[50px];
+}
+
+.app-logo {
+  @apply w-[50px] h-auto font-semibold text-base;
+}
+
+.SwitchRoot {
+  width: 42px;
+  height: 25px;
+  background-color: black;
+  border-radius: 9999px;
+  position: relative;
+}
+.SwitchThumb {
+  display: block;
+  width: 21px;
+  height: 21px;
+  background-color: white;
+  border-radius: 9999px;
+  transition: transform 100ms;
+  transform: translateX(2px);
+  will-change: transform;
+}
+.SwitchRoot[data-state='checked'] .SwitchThumb {
+  transform: translateX(19px);
+}

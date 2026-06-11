@@ -1,0 +1,18 @@
+{
+  "extends": "@chrome-extension/tsconfig/utils",
+  "compilerOptions": {
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/lib": ["./lib"],
+      "@/enums": ["./enums"],
+      "@/interfaces": ["./interfaces"],
+      "@/hooks": ["./hooks"],
+      "@/api": ["./api"],
+      "@/components": ["./components"]
+    },
+    "types": ["chrome", "node", "vite/client"]
+  },
+  "exclude": ["node_modules", "dist"]
+}

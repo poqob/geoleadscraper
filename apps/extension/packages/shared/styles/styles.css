@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+button {
+  all: unset;
+}
+
+.input {
+  @apply transition-all w-full box-border border border-solid border-neutral-300 text-black;
+}
+
+.input-base {
+  @apply h-[42px] text-sm px-2 rounded-md;
+}
+
+.input-sm {
+  @apply h-[36px] text-sm px-2 rounded-md;
+}
+
+.input-danger {
+  @apply border-red-500;
+}
+.input-disabled {
+  @apply bg-gray-100 text-gray-800 hover:bg-gray-100 cursor-not-allowed;
+}
+
+.input-error-hint {
+  @apply text-xs font-medium text-red-500;
+}
+
+.button {
+  @apply transition-all w-full flex justify-center items-center gap-2 text-center cursor-pointer font-semibold box-border;
+}
+
+.button-primary {
+  @apply bg-neutral-900 text-white border-none hover:bg-neutral-800;
+}
+
+.button-secondary {
+  @apply border border-solid border-neutral-300 hover:bg-neutral-100 text-neutral-900;
+}
+
+.button-upgrade {
+  @apply min-w-[80px] h-[18px] bg-rose-500 text-white uppercase hover:bg-rose-600;
+}
+
+.button-loading {
+  @apply brightness-110 cursor-wait;
+}
+
+.button-disabled {
+  @apply bg-gray-100 text-gray-800 hover:bg-gray-100 cursor-not-allowed;
+}
+
+.button-base,
+.text-input-base {
+  @apply h-[42px] text-sm px-2 rounded-md;
+}
+
+.button-sm,
+.text-input-sm {
+  @apply h-[32px] text-xs px-2 rounded-md;
+}
+
+.button-xs,
+.text-input-xs {
+  @apply h-[18px] text-[0.6rem] px-2 rounded;
+}
+
+.spinner {
+  @apply text-gray-200 animate-spin fill-gray-800;
+}
+
+.spinner-base {
+  @apply w-[20px] h-[20px];
+}
+
+.spinner-sm {
+  @apply w-[16px] h-[16px];
+}
+
+.logo {
+  @apply font-semibold text-lg;
+}
+
+.logo-base {
+  @apply text-lg xl:text-xl;
+}
+
+.logo-sm {
+  @apply text-sm;
+}
+
+.badge {
+  @apply w-auto h-[24px] px-2 flex flex-row justify-center items-center bg-black text-white font-semibold uppercase text-xxs rounded;
+}
+
+.switch-root {
+  @apply relative w-[36px] h-[20px] bg-neutral-400 rounded-full shadow-sm shadow-neutral-200 cursor-pointer;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+.switch-root:focus {
+  @apply shadow-neutral-500;
+}
+.switch-root[data-state='checked'] {
+  @apply bg-black;
+}
+
+.switch-thumb {
+  @apply block w-[15px] h-[15px] bg-white rounded-full;
+  transition: transform 100ms;
+  transform: translateX(3px);
+  will-change: transform;
+}
+.switch-thumb[data-state='checked'] {
+  transform: translateX(18px);
+}

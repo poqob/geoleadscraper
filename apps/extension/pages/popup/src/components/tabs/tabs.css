@@ -1,0 +1,42 @@
+/* reset */
+button,
+fieldset,
+input {
+  all: unset;
+}
+
+.tabs-root {
+  @apply flex flex-col w-full h-auto;
+}
+
+.tabs-list {
+  @apply flex;
+  flex-shrink: 0;
+}
+
+.tabs-trigger {
+  @apply h-[32px] cursor-pointer py-0 px-10 flex justify-center items-center bg-white hover:bg-neutral-100 hover:rounded-t-md text-xs text-neutral-800 border border-solid border-transparent;
+  outline: none;
+  flex: 1;
+  line-height: 1;
+  user-select: none;
+}
+.tabs-trigger:first-child {
+  @apply border-r-0;
+}
+.tabs-trigger:last-child {
+  @apply border-l-0;
+}
+.tabs-trigger[data-state='active'] {
+  @apply bg-white font-medium border-0 border-b border-solid rounded-t-md border-transparent border-t border-t-neutral-300 border-r border-r-neutral-300 border-l border-l-neutral-300;
+  outline: none;
+}
+
+.tabs-content {
+  @apply p-4 bg-white;
+  flex-grow: 1;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  box-shadow: none;
+  outline: none;
+}
