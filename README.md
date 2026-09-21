@@ -55,18 +55,25 @@ per person…) · photo links · owner response · review link.
 
 ## Quick start (install the Chrome extension)
 
-### Requirements
-- Node.js >= 20
-- pnpm >= 9 (`npm i -g pnpm`)
+### Install the ready-made build (no coding)
+1. Go to **[Releases → latest](https://github.com/ozhehkovski/geoleadscraper/releases/latest)** and download
+   **`geoleadscraper-extension-vX.Y.Z.zip`** (not "Source code").
+2. Unzip it.
+3. Open `chrome://extensions` → enable **Developer mode** → **Load unpacked** →
+   select the unzipped folder (the one that contains `manifest.json`).
 
-### Build & load
+> ⚠️ The green **Code → Download ZIP** button gives you the *source code*, not the
+> extension. Loading that folder fails with *"Manifest file is missing or unreadable"* —
+> use the Releases zip above, or build it yourself.
+
+### Build from source
+Requirements: Node.js >= 20 and pnpm >= 9 (`npm i -g pnpm`).
 ```bash
 pnpm install
 pnpm build:extension
 ```
 Then in Chrome: open `chrome://extensions` → enable **Developer mode** →
 **Load unpacked** → select `apps/extension/dist`.
-(Prefer not to build? Grab the packaged `dist.zip` from the repo and load that.)
 
 📖 Step-by-step install guide with screenshots: **[geoleadscraper.com/install](https://geoleadscraper.com/install)**.
 
@@ -111,6 +118,11 @@ pnpm lint
 pnpm type-check
 pnpm test
 ```
+
+### Releasing
+Bump `APP_VERSION` in `apps/extension/packages/shared/config.ts`, merge, then push a
+matching tag (`git tag v1.2.0 && git push origin v1.2.0`). The **Extension** GitHub
+Action builds the extension and attaches `geoleadscraper-extension-vX.Y.Z.zip` to the release.
 
 ## FAQ
 
