@@ -1,5 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import App from './app';
+import { ReviewsApp } from './reviews/reviews-app';
+import { receiveReviewsResponse } from './reviews/reviews-store';
 
 // eslint-disable-next-line
 // @ts-ignore
@@ -23,7 +25,8 @@ const shouldRender = ({ platform, url }: { url: string; platform: string }): boo
 
   switch (platform) {
     case DATA_PLATFORMS.GOOGLE_MAPS:
-      return path.includes('/maps/search/') && !path.includes('/maps/place/');
+      // Search results → company extraction; a single place → reviews export.
+      return path.includes('/maps/search/') || path.includes('/maps/place/');
     case DATA_PLATFORMS.YANDEX_MAPS:
       return (
         path.includes('/maps') &&
@@ -100,7 +103,9 @@ const render = () => {
   styleElement.innerHTML = tailwindcssOutput;
   shadowRoot.appendChild(styleElement);
 
-  createRoot(rootIntoShadow).render(<App platform={platform || ''} />);
+  const isGooglePlace = platform === DATA_PLATFORMS.GOOGLE_MAPS && url.includes('/maps/place/');
+
+  createRoot(rootIntoShadow).render(isGooglePlace ? <ReviewsApp /> : <App platform={platform || ''} />);
 
   logger('APP_RENDER');
 };
@@ -177,6 +182,9 @@ let initial = true;
 
 // listen for messages from the injected script
 window.addEventListener('message', event => {
+  // Only trust messages posted by the injected script in this very window.
+  if (event.source !== window) return;
+
   let message;
 
   try {
@@ -194,6 +202,11 @@ window.addEventListener('message', event => {
         logger('GOOGLE_MAPS_CONFIG', data || {});
       }
       sendBackgroundEvent({ type: BACKGROUND_EVENTS.UPDATE_GOOGLE_MAPS_CONFIG, payload: data });
+      break;
+    case BACKGROUND_EVENTS.GOOGLE_MAPS_REVIEWS_RESPONSE:
+      if (typeof data?.request === 'string' && typeof data?.response === 'string') {
+        receiveReviewsResponse({ request: data.request, response: data.response });
+      }
       break;
   }
 

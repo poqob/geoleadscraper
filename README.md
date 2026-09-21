@@ -28,6 +28,7 @@ names, addresses, phone numbers, websites, ratings, reviews and more.
 - 🗺️ **Google Maps, Yandex Maps & 2GIS** — one tool, three of the biggest map providers.
 - 🔑 **No API key, no Google Places API** — scrapes the page you're looking at, in your browser.
 - 📤 **One-click export** to **CSV / Excel (XLSX) / JSON**.
+- ⭐ **Google Maps reviews export** — download every review of a business (text, rating, date, owner reply, photos).
 - 🧲 **Built for lead generation** — turn any map search into a list of business leads.
 - 🔌 **Optional self-hosted backend** to also scrape **emails, phone numbers and social links** from each business website.
 - 🤖 **MCP server included** — let Claude (or any MCP client) collect and analyze leads on command.
@@ -40,11 +41,15 @@ review count · latitude / longitude · opening hours · claimed status · menu 
 booking links — and, with the optional backend, **email addresses, phone numbers
 and social media links** scraped from each business's own website.
 
+**Reviews** of any single place: author · rating · text (original + Google
+translation) · language · publish/edit date · sub-ratings (food, service, price
+per person…) · photo links · owner response · review link.
+
 ## Supported platforms
 
 | Map | Status |
 | --- | --- |
-| Google Maps | ✅ Google Maps scraper (search results) |
+| Google Maps | ✅ Google Maps scraper (search results + reviews of a place) |
 | Yandex Maps | ✅ |
 | 2GIS | ✅ |
 
@@ -68,6 +73,11 @@ Then in Chrome: open `chrome://extensions` → enable **Developer mode** →
 Open Google Maps, search for anything (e.g. *"coffee shops in Berlin"*), click
 **Start extracting**, then **Export** to download your CSV. The extension works
 **standalone** — Google Maps scraping needs no backend and no login.
+
+To export reviews, open a single place (e.g. click a business in the results),
+click **Extract reviews**, wait until the counter stops, then **Export reviews**.
+The extension opens the Reviews tab and scrolls it for you; you need to be signed
+in to Google, because Maps shows only a limited view without reviews to signed-out users.
 
 ### Optional: scrape website contacts (emails / phones / socials)
 The only feature that needs a backend is **website contact enrichment**:

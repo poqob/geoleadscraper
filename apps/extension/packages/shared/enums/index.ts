@@ -9,6 +9,8 @@ export const BACKGROUND_EVENTS = {
   EXTRACT_WEBSITES: 'EXTRACT_WEBSITES',
   CHECK_BACKEND: 'CHECK_BACKEND',
   UPDATE_GOOGLE_MAPS_CONFIG: 'UPDATE_GOOGLE_MAPS_CONFIG',
+  // Reviews responses forwarded by the injected page script (never sent to the background).
+  GOOGLE_MAPS_REVIEWS_RESPONSE: 'GOOGLE_MAPS_REVIEWS_RESPONSE',
   // MCP / auto-collection bridge
   CONTENT_READY: 'CONTENT_READY',
   SUBMIT_JOB_RESULTS: 'SUBMIT_JOB_RESULTS',
