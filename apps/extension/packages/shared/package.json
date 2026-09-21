@@ -18,10 +18,12 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "pnpm lint --fix",
     "prettier": "prettier . --write --ignore-path ../../.prettierignore",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "@chrome-extension/tsconfig": "workspace:*"
+    "@chrome-extension/tsconfig": "workspace:*",
+    "vitest": "^3"
   },
   "dependencies": {
     "@radix-ui/react-switch": "^1.2.5",
