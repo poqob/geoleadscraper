@@ -93,8 +93,7 @@ pnpm dev:api
 # or: cd apps/api && docker compose up --build
 ```
 Then open the extension **Settings** and set the **Backend URL** (default
-`http://localhost:5050`). When it's reachable, email / phone / social columns
-become available; otherwise that feature is simply hidden.
+`http://localhost:5050`). When enabled, the extension visits websites of businesses with missing email or phone contacts before export to enrich them without overwriting existing data. When the backend is not reachable, enrichment is silently skipped and export proceeds normally.
 
 ### Optional: MCP server (collect leads from Claude)
 A built-in [MCP server](apps/api/MCP.md) lets an AI assistant such as Claude run

@@ -14,6 +14,7 @@ import {
   logger,
   exportResults,
   sleep,
+  extractWebsiteResults,
 } from '@chrome-extension/shared/lib';
 import { Button, Stack, Spinner, AppProvider, Logo } from '@chrome-extension/shared/components';
 import {
@@ -21,7 +22,6 @@ import {
   DATA_EXPORT_BASIC_FIELDS,
   DATA_EXPORT_FIELDS,
   DATA_EXPORT_FORMATS,
-  DATA_EXPORT_PREMIUM_FIELDS,
   DATA_PARSING_MODES,
   DATA_PLATFORMS,
 } from '@chrome-extension/shared/enums';
@@ -105,6 +105,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     extract_websites: false,
     request_interval: 0,
     auto_download: false,
+    enrich_missing: false,
     export_format: DATA_EXPORT_FORMATS.CSV,
     export_fields: [],
   });
@@ -254,7 +255,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
   const getSettings = async () => {
     const { data } = await sendBackgroundEvent({ type: BACKGROUND_EVENTS.GET_STORE });
-    const { export_format, auto_download, export_fields, request_interval } = data || {};
+    const { export_format, auto_download, export_fields, request_interval, enrich_missing } = data || {};
 
     const extract_websites = ((export_fields as string[]) || []).some(field =>
       [DATA_EXPORT_FIELDS.EMAIL, DATA_EXPORT_FIELDS.PHONES, DATA_EXPORT_FIELDS.SOCIALS].includes(field),
@@ -267,6 +268,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       auto_download,
       export_fields: Array.isArray(export_fields) ? export_fields : [],
       request_interval,
+      enrich_missing: enrich_missing !== undefined ? enrich_missing : true,
     }));
   };
 
@@ -275,6 +277,47 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     getPlatform();
     await Promise.all([getSettings(), checkBackend()]);
     setLoading(false);
+  };
+
+  const enrichMissingContacts = async (items: any[]): Promise<any[]> => {
+    if (!state.backend_available) return items;
+
+    const targets = (items || []).filter(
+      (item: any) => item?.website && (!item.email || !item.phone),
+    );
+    if (targets.length === 0) return items;
+
+    const urls = Array.from(new Set(targets.map((item: any) => item.website.trim()).filter(Boolean)));
+    if (urls.length === 0) return items;
+
+    const { data } = await extractWebsiteResults({ urls });
+
+    const normalize = (u: string) =>
+      u ? u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '') : '';
+
+    const byNormalizedUrl: Record<string, any> = {};
+    for (const r of data || []) {
+      if (r?.url) {
+        byNormalizedUrl[normalize(r.url)] = r;
+      }
+    }
+
+    const updatedData = (items || []).map(item => {
+      if (!item?.website) return item;
+      const key = normalize(item.website);
+      const r = byNormalizedUrl[key];
+      if (!r) return item;
+
+      return {
+        ...item,
+        email: !item.email && r.email ? r.email : item.email,
+        phone: !item.phone && r.phones?.[0] ? r.phones[0] : item.phone,
+        phones: r.phones?.length ? r.phones.join(', ') : item.phones,
+      };
+    });
+
+    setState(prev => ({ ...prev, data: updatedData }));
+    return updatedData;
   };
 
   const handlers = {
@@ -333,7 +376,8 @@ const App = ({ platform }: { platform: DataPlatform }) => {
         // Read the current settings at export time so the selected export
         // fields are always up to date (avoids any stale-state mismatch).
         const settings = await sendBackgroundEvent({ type: BACKGROUND_EVENTS.GET_STORE });
-        const store = (settings?.data as { export_format?: string; export_fields?: string[] }) || {};
+        const store =
+          (settings?.data as { export_format?: string; export_fields?: string[]; enrich_missing?: boolean }) || {};
 
         const format = store.export_format || state.export_format || DATA_EXPORT_FORMATS.CSV;
 
@@ -346,10 +390,18 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
         const prefix = [config.EXPORT_FILE_NAME_PREFIX, platform].join('-');
 
+        const shouldEnrich =
+          store.enrich_missing !== undefined ? store.enrich_missing : (state.enrich_missing ?? true);
+
+        let exportItems = state.data || [];
+        if (shouldEnrich) {
+          exportItems = await enrichMissingContacts(exportItems);
+        }
+
         // Build each row using ONLY the selected fields, so the CSV columns
         // exactly match the export configuration.
         const data =
-          state.data?.map(item => {
+          exportItems.map(item => {
             const result: { [key: string]: number | string | boolean } = {};
             for (const field of fields) {
               if (field in (item as object)) {

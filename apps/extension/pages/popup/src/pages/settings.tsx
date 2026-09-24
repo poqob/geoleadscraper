@@ -42,7 +42,7 @@ const Page = () => {
 const SettingsGeneralView = () => {
   const store = useStore();
 
-  const { export_format, auto_download, backend_url } = store.state || {};
+  const { export_format, auto_download, backend_url, enrich_missing } = store.state || {};
 
   const handlers = {
     onFormatChange: (format: string) => {
@@ -50,6 +50,9 @@ const SettingsGeneralView = () => {
     },
     onDownloadChange: (download: boolean): void => {
       store.update(state => ({ ...state, auto_download: download }));
+    },
+    onEnrichMissingChange: (enrich: boolean): void => {
+      store.update(state => ({ ...state, enrich_missing: enrich }));
     },
     onBackendChange: (url: string): void => {
       store.update(state => ({ ...state, backend_url: url.trim() }));
@@ -78,7 +81,13 @@ const SettingsGeneralView = () => {
         </div>
       </div>
       <div>
-        <span>3. Backend URL (optional) — enables website contact enrichment.</span>
+        <span>3. Enrich missing email / phone from websites (before export).</span>
+        <div className="mt-2">
+          <Switch checked={enrich_missing} onCheckedChange={handlers.onEnrichMissingChange} />
+        </div>
+      </div>
+      <div>
+        <span>4. Backend URL (optional) — enables website contact enrichment.</span>
         <input
           type="text"
           spellCheck={false}
