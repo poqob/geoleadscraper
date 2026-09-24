@@ -57,7 +57,7 @@ per person…) · photo links · owner response · review link.
 ## Quick start (install the Chrome extension)
 
 ### Install the ready-made build (no coding)
-1. Go to **[Releases → latest](https://github.com/poqob/geoleadscraper/releases/latest)** and download
+1. Go to **[Releases → latest](https://github.com/ozhehkovski/geoleadscraper/releases/latest)** and download
    **`geoleadscraper-extension-vX.Y.Z.zip`** (not "Source code").
 2. Unzip it.
 3. Open `chrome://extensions` → enable **Developer mode** → **Load unpacked** →
