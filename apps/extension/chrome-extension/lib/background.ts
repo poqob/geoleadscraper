@@ -3,6 +3,7 @@ import 'webextension-polyfill';
 import { BACKGROUND_EVENTS } from '@chrome-extension/shared/enums';
 import { type BackgroundMessagePayload, type IBackgroundMessageResponse } from '@chrome-extension/shared';
 import { api, getBackendUrl } from './api';
+import { crawlWebsitesConcurrently } from './crawler';
 
 chrome.runtime.onInstalled.addListener(async () => {
   const manifest = chrome.runtime.getManifest();
@@ -229,6 +230,8 @@ const handleBackgroundEvent = ({
   }
 };
 
+let backendStatusCache: { available: boolean; timestamp: number } | null = null;
+
 const handlers = {
   fetchUrl: async ({ url }: { url: string }) => {
     const response = await fetch(url);
@@ -241,19 +244,47 @@ const handlers = {
 
     api.setBaseUrl(url);
     const { error } = await api.health();
-    return { available: !error, url };
+    const available = !error;
+    backendStatusCache = { available, timestamp: Date.now() };
+    return { available, url };
   },
 
   extractWebsites: async ({ urls }: { urls: string[] }) => {
-    const url = await getBackendUrl();
-    if (!url) throw new Error('backend is not configured');
+    // 1. If backend is configured and running, try backend first (Puppeteer)
+    try {
+      const now = Date.now();
+      const isCachedHealthy = backendStatusCache && (now - backendStatusCache.timestamp < 30000) && backendStatusCache.available;
+      const isCachedUnhealthy = backendStatusCache && (now - backendStatusCache.timestamp < 30000) && !backendStatusCache.available;
 
-    api.setBaseUrl(url);
-    const { data, error } = await api.extractWebsites({ urls });
-    if (error || !data) {
-      throw new Error(`${BACKGROUND_EVENTS.EXTRACT_WEBSITES}: failed`);
+      if (!isCachedUnhealthy) {
+        const url = await getBackendUrl();
+        if (url) {
+          api.setBaseUrl(url);
+          let canUseBackend = isCachedHealthy;
+          if (!canUseBackend) {
+            const { error: healthError } = await api.health();
+            canUseBackend = !healthError;
+            backendStatusCache = { available: canUseBackend, timestamp: now };
+          }
+          if (canUseBackend) {
+            const { data, error } = await api.extractWebsites({ urls });
+            if (!error && data?.data && data.data.length > 0) {
+              logger('Extracted websites via local backend', { count: data.data.length });
+              return data;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      backendStatusCache = { available: false, timestamp: Date.now() };
+      logger('Backend extraction unavailable, using native in-browser crawler', { error: (e as Error)?.message });
     }
-    return data;
+
+    // 2. Standalone in-browser native crawler (zero-setup, universal fallback)
+    logger('Running in-browser native crawler for URLs', { count: urls.length });
+    const result = await crawlWebsitesConcurrently(urls, 6);
+    logger('Native in-browser crawler completed', { results: result.results });
+    return result;
   },
 
   getGoogleMapsConfig: async (config: any) => {

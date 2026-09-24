@@ -30,7 +30,8 @@ names, addresses, phone numbers, websites, ratings, reviews and more.
 - 📤 **One-click export** to **CSV / Excel (XLSX) / JSON**.
 - ⭐ **Google Maps reviews export** — download every review of a business (text, rating, date, owner reply, photos).
 - 🧲 **Built for lead generation** — turn any map search into a list of business leads.
-- 🔌 **Optional self-hosted backend** to also scrape **emails, phone numbers and social links** from each business website.
+- ⚡ **Standalone in-browser contact enrichment** — scrapes **emails, phone numbers and social links** directly from business websites inside your browser (no backend or Docker required!).
+- 🔌 **Optional self-hosted backend** — for users who want server-side Puppeteer rendering.
 - 🤖 **MCP server included** — let Claude (or any MCP client) collect and analyze leads on command.
 - 🕵️ **Private** — runs locally, your data never touches our servers (there are none).
 
@@ -38,8 +39,8 @@ names, addresses, phone numbers, websites, ratings, reviews and more.
 
 Business name · category · full address · phone number · website · rating ·
 review count · latitude / longitude · opening hours · claimed status · menu /
-booking links — and, with the optional backend, **email addresses, phone numbers
-and social media links** scraped from each business's own website.
+booking links — and **email addresses, phone numbers and social media links**
+scraped directly from each business's own website right in your browser.
 
 **Reviews** of any single place: author · rating · text (original + Google
 translation) · language · publish/edit date · sub-ratings (food, service, price
@@ -56,7 +57,7 @@ per person…) · photo links · owner response · review link.
 ## Quick start (install the Chrome extension)
 
 ### Install the ready-made build (no coding)
-1. Go to **[Releases → latest](https://github.com/ozhehkovski/geoleadscraper/releases/latest)** and download
+1. Go to **[Releases → latest](https://github.com/poqob/geoleadscraper/releases/latest)** and download
    **`geoleadscraper-extension-vX.Y.Z.zip`** (not "Source code").
 2. Unzip it.
 3. Open `chrome://extensions` → enable **Developer mode** → **Load unpacked** →
@@ -78,22 +79,24 @@ Then in Chrome: open `chrome://extensions` → enable **Developer mode** →
 📖 Step-by-step install guide with screenshots: **[geoleadscraper.com/install](https://geoleadscraper.com/install)**.
 
 Open Google Maps, search for anything (e.g. *"coffee shops in Berlin"*), click
-**Start extracting**, then **Export** to download your CSV. The extension works
-**standalone** — Google Maps scraping needs no backend and no login.
+**Start extracting**, then **Export** to download your CSV or Excel file. The extension works
+**standalone** — Google Maps scraping and website contact enrichment need no backend and no login.
 
 To export reviews, open a single place (e.g. click a business in the results),
 click **Extract reviews**, wait until the counter stops, then **Export reviews**.
 The extension opens the Reviews tab and scrolls it for you; you need to be signed
 in to Google, because Maps shows only a limited view without reviews to signed-out users.
 
-### Optional: scrape website contacts (emails / phones / socials)
-The only feature that needs a backend is **website contact enrichment**:
+### Website contact enrichment (emails / phones / socials)
+GeoLeadScraper includes a **built-in standalone in-browser crawler** that automatically visits business websites with missing contacts before export. It runs completely client-side in your browser — **no setup, no backend, and no Docker required!** A live progress indicator shows real-time enrichment progress.
+
+#### Optional: Puppeteer backend
+For advanced users who prefer headless server-side crawling with JavaScript rendering:
 ```bash
 pnpm dev:api
 # or: cd apps/api && docker compose up --build
 ```
-Then open the extension **Settings** and set the **Backend URL** (default
-`http://localhost:5050`). When enabled, the extension visits websites of businesses with missing email or phone contacts before export to enrich them without overwriting existing data. When the backend is not reachable, enrichment is silently skipped and export proceeds normally.
+Then open extension **Settings** and set the **Backend URL** (default `http://localhost:5050`). When enabled, the backend is used if running; otherwise, the extension seamlessly falls back to the in-browser crawler.
 
 ### Optional: MCP server (collect leads from Claude)
 A built-in [MCP server](apps/api/MCP.md) lets an AI assistant such as Claude run
@@ -138,8 +141,9 @@ No paid limit. You can collect the businesses Google Maps returns for a search;
 use a reasonable pace to stay within the platforms' terms of service.
 
 **Can it scrape emails and phone numbers from business websites?**
-Yes, with the optional self-hosted backend, which visits each business website
-and extracts publicly listed emails, phones and social links.
+Yes! GeoLeadScraper includes a native in-browser crawler that automatically extracts emails,
+phone numbers, and social links from company websites during export — completely client-side
+without needing any backend. An optional self-hosted backend is also supported.
 
 **Does it work with Yandex Maps and 2GIS too?**
 Yes — the same extension scrapes Google Maps, Yandex Maps and 2GIS.

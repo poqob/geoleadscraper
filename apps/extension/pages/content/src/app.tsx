@@ -111,6 +111,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
   });
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [enrichmentProgress, setEnrichmentProgress] = useState<{ current: number; total: number } | null>(null);
 
   const stateRef = useRef(state);
   const controllerRef = useRef<AbortController | null>(null);
@@ -122,8 +123,8 @@ const App = ({ platform }: { platform: DataPlatform }) => {
   const styles = getStyles({ platform, position });
 
   const extract = async (options?: { page: number; next: boolean; extractWebsites?: boolean }) => {
-    // Website contact enrichment requires a reachable backend AND selected contact fields.
-    const extractWebsites = !!(state.backend_available && options?.extractWebsites);
+    // Website contact enrichment uses the standalone in-browser crawler or backend.
+    const extractWebsites = !!options?.extractWebsites;
     const url = document.location.href;
     const page = options?.page ? options.page : stateRef.current.page;
     const limit = autoJobRef.current?.limit || EXTRACT_LIMIT;
@@ -280,8 +281,6 @@ const App = ({ platform }: { platform: DataPlatform }) => {
   };
 
   const enrichMissingContacts = async (items: any[]): Promise<any[]> => {
-    if (!state.backend_available) return items;
-
     const targets = (items || []).filter(
       (item: any) => item?.website && (!item.email || !item.phone),
     );
@@ -290,34 +289,64 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     const urls = Array.from(new Set(targets.map((item: any) => item.website.trim()).filter(Boolean)));
     if (urls.length === 0) return items;
 
-    const { data } = await extractWebsiteResults({ urls });
+    setEnrichmentProgress({ current: 0, total: urls.length });
 
-    const normalize = (u: string) =>
-      u ? u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '') : '';
+    const BATCH_SIZE = 6;
+    const allExtractedData: any[] = [];
 
-    const byNormalizedUrl: Record<string, any> = {};
-    for (const r of data || []) {
-      if (r?.url) {
-        byNormalizedUrl[normalize(r.url)] = r;
+    try {
+      for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+        const chunk = urls.slice(i, i + BATCH_SIZE);
+        const res: any = await extractWebsiteResults({ urls: chunk });
+        const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+        if (list.length > 0) {
+          allExtractedData.push(...list);
+        }
+        const processed = Math.min(i + chunk.length, urls.length);
+        setEnrichmentProgress({ current: processed, total: urls.length });
       }
+
+      console.log(`[GeoLeadScraper] Finished enrichment crawl. Extracted ${allExtractedData.length} website results.`);
+
+      const normalize = (u: string) =>
+        u ? u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '') : '';
+
+      const byNormalizedUrl: Record<string, any> = {};
+      for (const r of allExtractedData) {
+        if (r?.url) {
+          const key = normalize(r.url);
+          byNormalizedUrl[key] = r;
+          const hostOnly = key.split('/')[0];
+          if (hostOnly && !byNormalizedUrl[hostOnly]) {
+            byNormalizedUrl[hostOnly] = r;
+          }
+        }
+      }
+
+      const updatedData = (items || []).map(item => {
+        if (!item?.website) return item;
+        const key = normalize(item.website);
+        const hostOnly = key.split('/')[0];
+        const r = byNormalizedUrl[key] || byNormalizedUrl[hostOnly];
+        if (!r) return item;
+
+        return {
+          ...item,
+          email: !item.email && r.email ? r.email : item.email,
+          phone: !item.phone && r.phones?.[0] ? r.phones[0] : item.phone,
+          phones: r.phones?.length ? r.phones.join(', ') : item.phones,
+        };
+      });
+
+      setState(prev => ({ ...prev, data: updatedData }));
+      return updatedData;
+    } catch (err) {
+      console.error('[GeoLeadScraper] Website enrichment failed:', err);
+      return items;
+    } finally {
+      await sleep(500);
+      setEnrichmentProgress(null);
     }
-
-    const updatedData = (items || []).map(item => {
-      if (!item?.website) return item;
-      const key = normalize(item.website);
-      const r = byNormalizedUrl[key];
-      if (!r) return item;
-
-      return {
-        ...item,
-        email: !item.email && r.email ? r.email : item.email,
-        phone: !item.phone && r.phones?.[0] ? r.phones[0] : item.phone,
-        phones: r.phones?.length ? r.phones.join(', ') : item.phones,
-      };
-    });
-
-    setState(prev => ({ ...prev, data: updatedData }));
-    return updatedData;
   };
 
   const handlers = {
@@ -398,15 +427,13 @@ const App = ({ platform }: { platform: DataPlatform }) => {
           exportItems = await enrichMissingContacts(exportItems);
         }
 
-        // Build each row using ONLY the selected fields, so the CSV columns
-        // exactly match the export configuration.
+        // Build each row using ONLY the selected fields, ensuring empty fields are preserved
         const data =
           exportItems.map(item => {
             const result: { [key: string]: number | string | boolean } = {};
             for (const field of fields) {
-              if (field in (item as object)) {
-                result[field] = (item as Record<string, any>)[field];
-              }
+              const val = (item as Record<string, any>)[field];
+              result[field] = val !== undefined && val !== null ? val : '';
             }
             return result;
           }) || [];
@@ -502,7 +529,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                 <div className="w-full flex flex-col">
                   <div className="w-full flex flex-row justify-between items-center">
                     <Logo size="sm" />
-                    <div>{extracting && <Spinner />}</div>
+                    <div>{(extracting || enrichmentProgress !== null) && <Spinner />}</div>
                   </div>
                   <div className="mt-4 w-full flex flex-col gap-2 text-sm">
                     {extracting ? (
@@ -516,6 +543,33 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                     ) : (
                       <></>
                     )}
+
+                    {/* Live Progress Bar during enrichment */}
+                    {enrichmentProgress !== null && (
+                      <div className="mt-2 w-full flex flex-col gap-1.5 p-2.5 bg-neutral-100 rounded-md border border-neutral-300 shadow-sm">
+                        <div className="flex justify-between items-center text-xs font-semibold text-neutral-800">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            Enriching contacts...
+                          </span>
+                          <span className="text-emerald-700 font-bold">
+                            {enrichmentProgress.current} / {enrichmentProgress.total} ({Math.round((enrichmentProgress.current / Math.max(1, enrichmentProgress.total)) * 100)}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-neutral-200 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-emerald-600 h-2 rounded-full transition-all duration-300 ease-out"
+                            style={{
+                              width: `${Math.round((enrichmentProgress.current / Math.max(1, enrichmentProgress.total)) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-[11px] text-neutral-500">
+                          Scanning {enrichmentProgress.total} websites found in {results} places...
+                        </span>
+                      </div>
+                    )}
+
                     <div className="mt-2 flex flex-col">
                       {initiated ? (
                         <Stack>
@@ -534,15 +588,29 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                             </>
                           ) : (
                             <>
-                              <Button variant="secondary" size="sm" onClick={handlers.export}>
-                                Export results ({results})
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={handlers.export}
+                                disabled={enrichmentProgress !== null}>
+                                {enrichmentProgress !== null
+                                  ? `Enriching (${enrichmentProgress.current}/${enrichmentProgress.total})...`
+                                  : `Export results (${results})`}
                               </Button>
                               {platform === DATA_PLATFORMS.GOOGLE_MAPS && !completed && (
-                                <Button variant="secondary" size="sm" onClick={handlers.resume}>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={handlers.resume}
+                                  disabled={enrichmentProgress !== null}>
                                   Resume
                                 </Button>
                               )}
-                              <Button variant="secondary" size="sm" onClick={handlers.reset}>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={handlers.reset}
+                                disabled={enrichmentProgress !== null}>
                                 Reset
                               </Button>
                             </>
@@ -556,9 +624,9 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                         </Stack>
                       )}
                     </div>
-                    {!initiated && state.extract_websites && !backend_available && (
-                      <span className="mt-1 text-xs text-amber-700">
-                        Start the local backend to also collect website contacts.
+                    {!initiated && (
+                      <span className="mt-1 text-xs text-neutral-500">
+                        ✓ Standalone contact enrichment active
                       </span>
                     )}
                   </div>

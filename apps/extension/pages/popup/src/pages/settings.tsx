@@ -97,8 +97,7 @@ const SettingsGeneralView = () => {
           className="mt-2 w-full rounded border border-neutral-300 px-2 py-1 text-sm outline-none focus:border-neutral-500"
         />
         <p className="mt-1 text-xs text-neutral-500">
-          Run the open-source backend locally to collect emails, phones and social links
-          from business websites. Leave empty to disable.
+          The extension extracts contacts directly inside your browser. Optional: you can connect a local Puppeteer backend for advanced JS rendering.
         </p>
       </div>
     </div>
@@ -134,7 +133,7 @@ const SettingsExportView = () => {
       <div className="flex flex-col">
         <span className="text-sm">Click to select / unselect what you want to export.</span>
         <p className="mt-1 text-xs text-neutral-500">
-          Email, phone and social fields require a running backend (see Settings).
+          Email, phone and social links are automatically enriched from business websites before export.
         </p>
         <div className="mt-2">
           <ToggleGroup items={items} filter={items => items} onChange={handleSelect} />
