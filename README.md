@@ -29,8 +29,9 @@ names, addresses, phone numbers, websites, ratings, reviews and more.
 - 🔑 **No API key, no Google Places API** — scrapes the page you're looking at, in your browser.
 - 📤 **One-click export** to **CSV / Excel (XLSX) / JSON**.
 - ⭐ **Google Maps reviews export** — download every review of a business (text, rating, date, owner reply, photos).
+- 🧭 **Discover Area (Spatial Grid Mode)** — scan any geographic area using automated 3x3, 4x4, or 6x6 spatial grid search tiles to discover up to 10x more places beyond the 120-item viewport limit. Supports customizable discovery keywords.
 - 🧲 **Built for lead generation** — turn any map search into a list of business leads.
-- ⚡ **Standalone in-browser contact enrichment** — scrapes **emails, phone numbers and social links** directly from business websites inside your browser (no backend or Docker required!).
+- ⚡ **Standalone in-browser contact enrichment** — automatically scrapes **emails, phone numbers and social links** directly from business websites inside your browser before export (bidirectional `http`/`https` fallback, HTML entity decoding, batch-isolated, zero setup, no backend or Docker required!).
 - 🔌 **Optional self-hosted backend** — for users who want server-side Puppeteer rendering.
 - 🤖 **MCP server included** — let Claude (or any MCP client) collect and analyze leads on command.
 - 🕵️ **Private** — runs locally, your data never touches our servers (there are none).
@@ -87,8 +88,23 @@ click **Extract reviews**, wait until the counter stops, then **Export reviews**
 The extension opens the Reviews tab and scrolls it for you; you need to be signed
 in to Google, because Maps shows only a limited view without reviews to signed-out users.
 
+### Discover Area (Spatial Grid Mode)
+Google Maps caps search results to ~120 places per viewport. To thoroughly scrape an entire district, city or industrial zone:
+1. Navigate to the desired area on Google Maps.
+2. Click **🧭 Discover Area** (or configure your keyword and grid matrix size in the inline settings / popup).
+3. Select your grid size:
+   - **3x3 Grid (9 tiles):** Quick scan of a neighborhood or town center (~500+ places).
+   - **4x4 Grid (16 tiles):** Standard thorough scan for city districts (~1,000+ places).
+   - **6x6 Grid (36 tiles):** Maximum depth scan for large metropolitan regions (~2,500+ places).
+4. Customize your search query keyword (default: current search keyword, or automatically adapts to the region).
+5. Watch live tile-by-tile progress with automatic deduplication.
+
 ### Website contact enrichment (emails / phones / socials)
-GeoLeadScraper includes a **built-in standalone in-browser crawler** that automatically visits business websites with missing contacts before export. It runs completely client-side in your browser — **no setup, no backend, and no Docker required!** A live progress indicator shows real-time enrichment progress.
+GeoLeadScraper includes a **built-in standalone in-browser crawler** that automatically visits business websites with missing contacts before export. It runs completely client-side in your browser — **no setup, no backend, and no Docker required!**
+- **Bidirectional protocol fallback:** Automatically tries `http://` and `https://` alternatives if a website redirects or uses mixed SSL certificates.
+- **Obfuscation & entity decoding:** Extracts obfuscated emails (`info [at] domain.com`, `&#64;`, `&commat;`, `mailto:` links, JSON-LD schema blocks).
+- **Batch isolation:** 8-worker concurrent pool with fault-isolated chunk processing — an unresponsive or invalid website never halts the rest of the batch.
+- **Live progress feedback:** Real-time visual counter (`Enriching (X/Total)...`) and progress bar on the extension UI.
 
 #### Optional: Puppeteer backend
 For advanced users who prefer headless server-side crawling with JavaScript rendering:

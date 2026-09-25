@@ -329,3 +329,14 @@ Tüm iş paketleri başarıyla uygulanmış ve doğrulanmıştır:
 * Kullanılmayan `catch (e)` ve importlar temizlendi.
 * `pnpm --filter ... type-check` ve `pnpm --filter ... lint` tüm paketlerde sıfır hatayla geçti.
 * `apps/extension/dist` derleme çıktıları başarıyla üretildi.
+
+### 6. Mekânsal Izgara Modu (Discover Area Grid Mode - 3x3, 4x4, 6x6)
+* Google Maps'in 120 sonuç sınırını aşmak için harita görünümünü otomatik alt karelere (tile) bölerek tarayan mekânsal keşif modu eklendi.
+* Seçilebilir ızgara boyutları (3x3 = 9 kare, 4x4 = 16 kare, 6x6 = 36 kare) ve özelleştirilebilir arama anahtar kelimesi desteği getirildi.
+* Canlı ilerleme çubuğu, tekil işletme sayacı ve anlık durum bilgisi eklendi.
+
+### 7. Bağımsız Crawler Güçlendirmesi & Hata İzolasyonu
+* **Çift yönlü protokol desteği:** `http://` ve `https://` alternatifleri otomatik denenir (CORS ve SSL yönlendirme hatalarını önler).
+* **HTML Entity & Obfuscation çözücü:** `info&#64;...`, `info [at] ...`, `mailto:` linkleri ve Schema.org JSON-LD blokları regex ile taranır.
+* **Batch İçi Hata İzolasyonu (`inner try-catch`):** 8'erli gruplarla taranırken, yanıt vermeyen tek bir site tüm listeyi iptal etmeyecek şekilde izole edildi.
+* **Symlink Entegrasyonu:** `/home/dag-midi-calculator/opt/chrome_extensions/dist` -> `apps/extension/dist` symlink yapılarak Chrome tarafındaki anlık derleme senkronizasyonu sağlandı.
