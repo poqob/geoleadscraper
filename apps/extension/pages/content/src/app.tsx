@@ -318,16 +318,20 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
     setEnrichmentProgress({ current: 0, total: urls.length });
 
-    const BATCH_SIZE = 6;
+    const BATCH_SIZE = 8;
     const allExtractedData: any[] = [];
 
     try {
       for (let i = 0; i < urls.length; i += BATCH_SIZE) {
         const chunk = urls.slice(i, i + BATCH_SIZE);
-        const res: any = await extractWebsiteResults({ urls: chunk });
-        const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
-        if (list.length > 0) {
-          allExtractedData.push(...list);
+        try {
+          const res: any = await extractWebsiteResults({ urls: chunk });
+          const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+          if (list.length > 0) {
+            allExtractedData.push(...list);
+          }
+        } catch (batchErr) {
+          console.warn('[GeoLeadScraper] Enrichment batch failed:', chunk, batchErr);
         }
         const processed = Math.min(i + chunk.length, urls.length);
         setEnrichmentProgress({ current: processed, total: urls.length });
@@ -547,7 +551,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
         const shouldEnrich =
           store.enrich_missing !== undefined ? store.enrich_missing : (state.enrich_missing ?? true);
 
-        let exportItems = state.data || [];
+        let exportItems = stateRef.current?.data || state.data || [];
         if (shouldEnrich) {
           exportItems = await enrichMissingContacts(exportItems);
         }

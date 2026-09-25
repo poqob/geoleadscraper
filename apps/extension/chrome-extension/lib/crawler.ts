@@ -53,11 +53,19 @@ export function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '').replace(/^mailto:/, '');
 }
 
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/gi, '&')
+    .replace(/&#64;|&commat;|&#x40;/gi, '@')
+    .replace(/&#46;|&#x2e;/gi, '.')
+    .replace(/&nbsp;/gi, ' ');
+}
+
 export function deobfuscate(text: string): string {
   return text
-    .replace(/\s*[([{]\s*at\s*[)\]}]\s*/gi, '@')
+    .replace(/\s*[([{]\s*(?:at|@)\s*[)\]}]\s*/gi, '@')
     .replace(/\s+at\s+/gi, '@')
-    .replace(/\s*[([{]\s*dot\s*[)\]}]\s*/gi, '.')
+    .replace(/\s*[([{]\s*(?:dot|\.)\s*[)\]}]\s*/gi, '.')
     .replace(/\s+dot\s+/gi, '.');
 }
 
@@ -115,8 +123,12 @@ function extractEmailsFromHtml(html: string): string[] {
     }
   }
 
-  // 3. Text emails (deobfuscated)
-  const cleanText = deobfuscate(html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '));
+  // 3. Text emails (deobfuscated + entity decoded)
+  const cleanText = deobfuscate(
+    decodeHtmlEntities(
+      html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '),
+    ),
+  );
   const textMatches = cleanText.match(EMAIL_RE) || [];
   for (const em of textMatches) {
     candidates.push(normalizeEmail(em));
@@ -208,7 +220,7 @@ function findContactPageUrl(baseUrl: string, html: string): string | null {
   return null;
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 7000): Promise<string> {
+async function fetchWithTimeout(url: string, timeoutMs = 6000): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -216,12 +228,16 @@ async function fetchWithTimeout(url: string, timeoutMs = 7000): Promise<string> 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
       signal: controller.signal,
     });
     clearTimeout(timer);
     if (!response.ok) return '';
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType && !contentType.includes('text/') && !contentType.includes('xml')) {
+      return '';
+    }
     return await response.text();
   } catch {
     clearTimeout(timer);
@@ -237,11 +253,14 @@ export async function crawlWebsite(rawUrl: string): Promise<IExtractedContact> {
       url = `https://${url}`;
     }
 
-    let html = await fetchWithTimeout(url, 7000);
+    let html = await fetchWithTimeout(url, 6000);
 
-    // If https failed with timeout or error, attempt http fallback
-    if (!html && url.startsWith('https://')) {
-      html = await fetchWithTimeout(url.replace('https://', 'http://'), 4000);
+    // If first attempt failed, attempt alternate protocol fallback (https <-> http)
+    if (!html) {
+      const altUrl = url.startsWith('https://')
+        ? url.replace(/^https:\/\//i, 'http://')
+        : url.replace(/^http:\/\//i, 'https://');
+      html = await fetchWithTimeout(altUrl, 3500);
     }
 
     if (!html) {
@@ -262,7 +281,7 @@ export async function crawlWebsite(rawUrl: string): Promise<IExtractedContact> {
     if (emails.length === 0) {
       const contactUrl = findContactPageUrl(url, html);
       if (contactUrl) {
-        const contactHtml = await fetchWithTimeout(contactUrl, 4000);
+        const contactHtml = await fetchWithTimeout(contactUrl, 3500);
         if (contactHtml) {
           const contactEmails = extractEmailsFromHtml(contactHtml);
           const contactPhones = extractPhonesFromHtml(contactHtml);
@@ -298,7 +317,7 @@ export async function crawlWebsite(rawUrl: string): Promise<IExtractedContact> {
  */
 export async function crawlWebsitesConcurrently(
   urls: string[],
-  concurrency = 6,
+  concurrency = 8,
 ): Promise<{ data: IExtractedContact[]; results: number }> {
   const results: IExtractedContact[] = new Array(urls.length);
   let cursor = 0;
