@@ -648,9 +648,9 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                         </Stack>
                       )}
                     </div>
-                    {!initiated && state.enrich_missing && (
-                      <span className="mt-1 text-xs text-neutral-500">
-                        ✓ Standalone contact enrichment active
+                    {!initiated && !state.enrich_missing && state.extract_websites && !backend_available && (
+                      <span className="mt-1 text-xs text-amber-700">
+                        Start the local backend to also collect website contacts.
                       </span>
                     )}
                   </div>
