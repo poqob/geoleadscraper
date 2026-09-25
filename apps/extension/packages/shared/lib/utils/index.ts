@@ -8,3 +8,4 @@ export * from './url';
 export * from './dom';
 export * from './export';
 export * from './reviews';
+export * from './discover';
