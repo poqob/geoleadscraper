@@ -270,7 +270,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       auto_download,
       export_fields: Array.isArray(export_fields) ? export_fields : [],
       request_interval,
-      enrich_missing: enrich_missing !== undefined ? enrich_missing : true,
+      enrich_missing: enrich_missing !== undefined ? enrich_missing : false,
     }));
   };
 
@@ -436,7 +436,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
         const prefix = [config.EXPORT_FILE_NAME_PREFIX, platform].join('-');
 
         const shouldEnrich =
-          store.enrich_missing !== undefined ? store.enrich_missing : (state.enrich_missing ?? true);
+          store.enrich_missing !== undefined ? store.enrich_missing : (state.enrich_missing ?? false);
 
         let exportItems = state.data || [];
         if (shouldEnrich) {

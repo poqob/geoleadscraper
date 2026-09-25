@@ -268,9 +268,9 @@ const handlers = {
           }
           if (canUseBackend) {
             const { data, error } = await api.extractWebsites({ urls });
-            if (!error && data?.data) {
-              logger('Extracted websites via local backend', { count: data.data.length });
-              return data;
+            if (!error) {
+              logger('Extracted websites via local backend', { count: data?.data?.length || 0 });
+              return data || { data: [], results: 0 };
             }
           }
         }
