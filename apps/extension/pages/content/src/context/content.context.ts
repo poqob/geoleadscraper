@@ -54,7 +54,7 @@ export const ContentContext = createContext<IContentContext>({
     auto_download: false,
     export_format: DATA_EXPORT_FORMATS.CSV,
     export_fields: [],
-    enrich_missing: true,
+    enrich_missing: false,
     request_interval: 5000,
   },
   setContext: () => {},
