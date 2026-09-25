@@ -7,6 +7,10 @@ export interface IAppStoreState {
   backend_url?: string;
   /** Before export, fill missing email/phone by scraping each business website. */
   enrich_missing?: boolean;
+  /** Keywords/query for Discover Area mode. If empty, automatically uses "firmalar" / "businesses". */
+  discover_query?: string;
+  /** Grid matrix size for Discover Area mode: 3 (3x3), 4 (4x4), 6 (6x6). Default 4. */
+  discover_grid_size?: number;
 }
 
 export interface IExtractWebsiteResult {

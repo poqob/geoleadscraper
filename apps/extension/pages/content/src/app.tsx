@@ -16,6 +16,7 @@ import {
   sleep,
   extractWebsiteResults,
   discoverGoogleMapsGrid,
+  storage,
   type IDiscoverProgress,
 } from '@chrome-extension/shared/lib';
 import { Button, Stack, Spinner, AppProvider, Logo } from '@chrome-extension/shared/components';
@@ -108,6 +109,8 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     request_interval: 0,
     auto_download: false,
     enrich_missing: false,
+    discover_query: '',
+    discover_grid_size: 4,
     export_format: DATA_EXPORT_FORMATS.CSV,
     export_fields: [],
   });
@@ -116,6 +119,9 @@ const App = ({ platform }: { platform: DataPlatform }) => {
   const [enrichmentProgress, setEnrichmentProgress] = useState<{ current: number; total: number } | null>(null);
   const [discoverProgress, setDiscoverProgress] = useState<IDiscoverProgress | null>(null);
   const [isDiscoverMode, setIsDiscoverMode] = useState<boolean>(false);
+  const [showDiscoverSettings, setShowDiscoverSettings] = useState<boolean>(false);
+  const [discoverQueryInput, setDiscoverQueryInput] = useState<string>('');
+  const isTypingQueryRef = useRef<boolean>(false);
 
   const stateRef = useRef(state);
   const controllerRef = useRef<AbortController | null>(null);
@@ -260,11 +266,26 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
   const getSettings = async () => {
     const { data } = await sendBackgroundEvent({ type: BACKGROUND_EVENTS.GET_STORE });
-    const { export_format, auto_download, export_fields, request_interval, enrich_missing } = data || {};
+    const {
+      export_format,
+      auto_download,
+      export_fields,
+      request_interval,
+      enrich_missing,
+      discover_query,
+      discover_grid_size,
+    } = data || {};
 
     const extract_websites = ((export_fields as string[]) || []).some(field =>
       [DATA_EXPORT_FIELDS.EMAIL, DATA_EXPORT_FIELDS.PHONES, DATA_EXPORT_FIELDS.SOCIALS].includes(field),
     );
+
+    const storedGridSize = discover_grid_size !== undefined ? Number(discover_grid_size) : 4;
+    const storedQuery = discover_query !== undefined ? discover_query : '';
+
+    if (!isTypingQueryRef.current) {
+      setDiscoverQueryInput(storedQuery);
+    }
 
     setState(state => ({
       ...state,
@@ -274,6 +295,8 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       export_fields: Array.isArray(export_fields) ? export_fields : [],
       request_interval,
       enrich_missing: enrich_missing !== undefined ? enrich_missing : true,
+      discover_query: isTypingQueryRef.current ? state.discover_query : storedQuery,
+      discover_grid_size: storedGridSize,
     }));
   };
 
@@ -389,6 +412,23 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
       await extract({ page, extractWebsites, next: true });
     },
+    updateDiscoverQuery: (query: string) => {
+      setDiscoverQueryInput(query);
+      setState(prev => ({ ...prev, discover_query: query }));
+      storage.update(s => ({ ...s, discover_query: query.trim() }));
+      sendBackgroundEvent({
+        type: BACKGROUND_EVENTS.SET_STORE,
+        payload: { store: { discover_query: query.trim() } },
+      });
+    },
+    updateDiscoverGridSize: (size: number) => {
+      setState(prev => ({ ...prev, discover_grid_size: size }));
+      storage.update(s => ({ ...s, discover_grid_size: size }));
+      sendBackgroundEvent({
+        type: BACKGROUND_EVENTS.SET_STORE,
+        payload: { store: { discover_grid_size: size } },
+      });
+    },
     discover: async () => {
       if (platform !== DATA_PLATFORMS.GOOGLE_MAPS) return;
 
@@ -397,6 +437,11 @@ const App = ({ platform }: { platform: DataPlatform }) => {
         console.warn('[GeoLeadScraper] Could not determine coordinates for Discover mode');
         return;
       }
+
+      const gridSize = state.discover_grid_size || 4;
+      const totalTiles = gridSize * gridSize;
+      const queryKeyword =
+        state.discover_query && state.discover_query.trim().length > 0 ? state.discover_query.trim() : undefined;
 
       controllerRef.current = new AbortController();
       setIsDiscoverMode(true);
@@ -412,7 +457,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
       setDiscoverProgress({
         currentTile: 0,
-        totalTiles: 16,
+        totalTiles,
         totalUnique: 0,
         newInTile: 0,
         percent: 0,
@@ -428,8 +473,9 @@ const App = ({ platform }: { platform: DataPlatform }) => {
           language: query.language,
           region: query.region,
           psi: query.psi,
-          gridSize: 4,
+          gridSize,
           zoomOffset: 1,
+          queryKeyword,
           controller: controllerRef.current,
           onProgress: p => setDiscoverProgress(p),
           onUpdate: items => {
@@ -462,6 +508,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       if (controllerRef.current) controllerRef.current.abort();
       setDiscoverProgress(null);
       setIsDiscoverMode(false);
+      setShowDiscoverSettings(false);
       setEnrichmentProgress(null);
 
       setState(state => ({
@@ -626,13 +673,13 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                       <></>
                     )}
 
-                    {/* Live Progress Bar during 4x4 Grid Discovery */}
+                    {/* Live Progress Bar during Grid Discovery */}
                     {discoverProgress !== null && (
                       <div className="mt-2 w-full flex flex-col gap-1.5 p-2.5 bg-blue-50/70 rounded-md border border-blue-200 shadow-sm">
                         <div className="flex justify-between items-center text-xs font-semibold text-blue-900">
                           <span className="flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                            Discovering 4x4 Grid...
+                            Discovering {state.discover_grid_size || 4}x{state.discover_grid_size || 4} Grid...
                           </span>
                           <span className="text-blue-700 font-bold">
                             Tile {discoverProgress.currentTile} / {discoverProgress.totalTiles} ({discoverProgress.percent}%)
@@ -727,13 +774,129 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                       ) : (
                         <Stack>
                           {platform === DATA_PLATFORMS.GOOGLE_MAPS && (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={handlers.discover}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm flex items-center justify-center gap-1.5">
-                              🧭 Discover Area (4x4 Grid)
-                            </Button>
+                            <div className="flex flex-col gap-1.5 w-full">
+                              <div className="flex flex-row items-center gap-1.5 w-full">
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={handlers.discover}
+                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm flex items-center justify-center gap-1.5 py-1.5 text-xs">
+                                  🧭 Discover Area ({state.discover_grid_size || 4}x{state.discover_grid_size || 4} Grid)
+                                </Button>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowDiscoverSettings(prev => !prev)}
+                                  title="Discover settings (keywords & grid)"
+                                  className={twMerge(
+                                    'w-8 h-8 shrink-0 flex items-center justify-center rounded border transition-colors shadow-sm cursor-pointer',
+                                    showDiscoverSettings
+                                      ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
+                                      : 'bg-white hover:bg-neutral-50 border-neutral-300 text-neutral-600 hover:text-neutral-900',
+                                  )}>
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="w-4 h-4">
+                                    <circle cx="11" cy="11" r="8" />
+                                    <path d="m21 21-4.3-4.3" />
+                                  </svg>
+                                </button>
+                              </div>
+
+                              {showDiscoverSettings && (
+                                <div className="w-full p-2.5 bg-neutral-50 rounded-md border border-neutral-300/80 shadow-sm flex flex-col gap-2.5 text-xs text-neutral-700">
+                                  <div className="flex justify-between items-center font-semibold text-neutral-800 border-b border-neutral-200 pb-1.5">
+                                    <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-neutral-500 font-bold">
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="13"
+                                        height="13"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="w-3.5 h-3.5 text-emerald-600">
+                                        <circle cx="11" cy="11" r="8" />
+                                        <path d="m21 21-4.3-4.3" />
+                                      </svg>
+                                      Discover Settings
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowDiscoverSettings(false)}
+                                      className="text-neutral-400 hover:text-neutral-600 text-xs px-1 py-0.5 rounded hover:bg-neutral-200 cursor-pointer">
+                                      ✕
+                                    </button>
+                                  </div>
+
+                                  {/* Keywords input */}
+                                  <div className="flex flex-col gap-1">
+                                    <label className="font-semibold text-neutral-700 text-[11px]">
+                                      Target Keywords (optional):
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={discoverQueryInput}
+                                      onFocus={() => {
+                                        isTypingQueryRef.current = true;
+                                      }}
+                                      onChange={e => {
+                                        isTypingQueryRef.current = true;
+                                        handlers.updateDiscoverQuery(e.target.value);
+                                      }}
+                                      onBlur={e => {
+                                        isTypingQueryRef.current = false;
+                                        handlers.updateDiscoverQuery(e.target.value);
+                                      }}
+                                      placeholder="e.g. firmalar, sanayi, restoran..."
+                                      className="w-full px-2 py-1 bg-white border border-neutral-300 rounded text-xs text-neutral-800 focus:outline-none focus:border-emerald-500 shadow-inner"
+                                    />
+                                    <span className="text-[10px] text-neutral-500">
+                                      Empty = auto discover all businesses in area
+                                    </span>
+                                  </div>
+
+                                  {/* Grid size selection (3x3, 4x4, 6x6) */}
+                                  <div className="flex flex-col gap-1">
+                                    <label className="font-semibold text-neutral-700 text-[11px]">
+                                      Scan Grid Area:
+                                    </label>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {[3, 4, 6].map(size => {
+                                        const isSelected = (state.discover_grid_size || 4) === size;
+                                        const tileCount = size * size;
+                                        return (
+                                          <button
+                                            key={size}
+                                            type="button"
+                                            onClick={() => handlers.updateDiscoverGridSize(size)}
+                                            className={twMerge(
+                                              'py-1 px-1 rounded text-center border font-medium transition-all text-xs cursor-pointer flex flex-col items-center justify-center',
+                                              isSelected
+                                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs font-semibold'
+                                                : 'bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100',
+                                            )}>
+                                            <span>{size}x{size}</span>
+                                            <span className={twMerge('text-[9px]', isSelected ? 'text-emerald-100' : 'text-neutral-400')}>
+                                              {tileCount} tiles
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           )}
                           <Button variant="secondary" size="sm" onClick={handlers.extractStartClick}>
                             Start extracting (Search)
