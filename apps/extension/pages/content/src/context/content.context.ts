@@ -27,10 +27,6 @@ export interface IContentContextState {
   export_fields: string[];
   /** Before export, fill missing email/phone by scraping each business website. */
   enrich_missing?: boolean;
-  /** Custom keywords/query for Discover Area mode. */
-  discover_query?: string;
-  /** Grid matrix size for Discover Area mode: 3 (3x3), 4 (4x4), 6 (6x6). Default 4. */
-  discover_grid_size?: number;
 }
 
 export interface IContentContext {
@@ -58,9 +54,7 @@ export const ContentContext = createContext<IContentContext>({
     auto_download: false,
     export_format: DATA_EXPORT_FORMATS.CSV,
     export_fields: [],
-    enrich_missing: false,
-    discover_query: '',
-    discover_grid_size: 4,
+    enrich_missing: true,
     request_interval: 5000,
   },
   setContext: () => {},

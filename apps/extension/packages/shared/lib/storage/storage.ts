@@ -18,8 +18,6 @@ export const storage: AppStorage = {
       export_fields: DATA_EXPORT_BASIC_FIELDS,
       backend_url: config.DEFAULT_BACKEND_URL,
       enrich_missing: true,
-      discover_query: '',
-      discover_grid_size: 4,
     },
     {
       storageType: StorageType.Local,

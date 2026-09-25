@@ -143,20 +143,6 @@ chrome.runtime.onMessage.addListener(
         });
       }
 
-      if (action === BACKGROUND_EVENTS.SET_STORE) {
-        const { store: partialStore } = (payload as { store: Record<string, any> }) || {};
-        if (partialStore) {
-          chrome.storage.local.get('store', ({ store: currentStore }) => {
-            const updated = { ...currentStore, ...partialStore };
-            chrome.storage.local.set({ store: updated }, () => {
-              send({ data: updated, error: false });
-            });
-          });
-        } else {
-          send({ data: null, error: false });
-        }
-      }
-
       // a content script asks whether its tab was opened for an auto-collect job
       if (action === BACKGROUND_EVENTS.CONTENT_READY) {
         const tabId = sender.tab?.id;
@@ -282,7 +268,7 @@ const handlers = {
           }
           if (canUseBackend) {
             const { data, error } = await api.extractWebsites({ urls });
-            if (!error && data?.data && data.data.length > 0) {
+            if (!error && data?.data) {
               logger('Extracted websites via local backend', { count: data.data.length });
               return data;
             }

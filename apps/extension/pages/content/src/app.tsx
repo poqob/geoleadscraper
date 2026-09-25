@@ -15,9 +15,6 @@ import {
   exportResults,
   sleep,
   extractWebsiteResults,
-  discoverGoogleMapsGrid,
-  storage,
-  type IDiscoverProgress,
 } from '@chrome-extension/shared/lib';
 import { Button, Stack, Spinner, AppProvider, Logo } from '@chrome-extension/shared/components';
 import {
@@ -109,19 +106,12 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     request_interval: 0,
     auto_download: false,
     enrich_missing: false,
-    discover_query: '',
-    discover_grid_size: 4,
     export_format: DATA_EXPORT_FORMATS.CSV,
     export_fields: [],
   });
 
   const [loading, setLoading] = useState<boolean>(true);
   const [enrichmentProgress, setEnrichmentProgress] = useState<{ current: number; total: number } | null>(null);
-  const [discoverProgress, setDiscoverProgress] = useState<IDiscoverProgress | null>(null);
-  const [isDiscoverMode, setIsDiscoverMode] = useState<boolean>(false);
-  const [showDiscoverSettings, setShowDiscoverSettings] = useState<boolean>(false);
-  const [discoverQueryInput, setDiscoverQueryInput] = useState<string>('');
-  const isTypingQueryRef = useRef<boolean>(false);
 
   const stateRef = useRef(state);
   const controllerRef = useRef<AbortController | null>(null);
@@ -133,8 +123,9 @@ const App = ({ platform }: { platform: DataPlatform }) => {
   const styles = getStyles({ platform, position });
 
   const extract = async (options?: { page: number; next: boolean; extractWebsites?: boolean }) => {
-    // Website contact enrichment uses the standalone in-browser crawler or backend.
-    const extractWebsites = !!options?.extractWebsites;
+    // Website contact enrichment requires a reachable backend AND selected contact fields during extraction.
+    // In-browser standalone enrichment runs cleanly before export (Stage 2) without double-crawling.
+    const extractWebsites = !!(state.backend_available && options?.extractWebsites);
     const url = document.location.href;
     const page = options?.page ? options.page : stateRef.current.page;
     const limit = autoJobRef.current?.limit || EXTRACT_LIMIT;
@@ -266,26 +257,11 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
   const getSettings = async () => {
     const { data } = await sendBackgroundEvent({ type: BACKGROUND_EVENTS.GET_STORE });
-    const {
-      export_format,
-      auto_download,
-      export_fields,
-      request_interval,
-      enrich_missing,
-      discover_query,
-      discover_grid_size,
-    } = data || {};
+    const { export_format, auto_download, export_fields, request_interval, enrich_missing } = data || {};
 
     const extract_websites = ((export_fields as string[]) || []).some(field =>
       [DATA_EXPORT_FIELDS.EMAIL, DATA_EXPORT_FIELDS.PHONES, DATA_EXPORT_FIELDS.SOCIALS].includes(field),
     );
-
-    const storedGridSize = discover_grid_size !== undefined ? Number(discover_grid_size) : 4;
-    const storedQuery = discover_query !== undefined ? discover_query : '';
-
-    if (!isTypingQueryRef.current) {
-      setDiscoverQueryInput(storedQuery);
-    }
 
     setState(state => ({
       ...state,
@@ -295,8 +271,6 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       export_fields: Array.isArray(export_fields) ? export_fields : [],
       request_interval,
       enrich_missing: enrich_missing !== undefined ? enrich_missing : true,
-      discover_query: isTypingQueryRef.current ? state.discover_query : storedQuery,
-      discover_grid_size: storedGridSize,
     }));
   };
 
@@ -307,10 +281,24 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     setLoading(false);
   };
 
-  const enrichMissingContacts = async (items: any[]): Promise<any[]> => {
-    const targets = (items || []).filter(
-      (item: any) => item?.website && (!item.email || !item.phone),
-    );
+  const enrichMissingContacts = async (items: any[], fields: string[]): Promise<any[]> => {
+    const wantsEmail = fields.includes(DATA_EXPORT_FIELDS.EMAIL);
+    const wantsPhone = fields.includes(DATA_EXPORT_FIELDS.PHONE);
+    const wantsPhones = fields.includes(DATA_EXPORT_FIELDS.PHONES);
+    const wantsSocials = fields.includes(DATA_EXPORT_FIELDS.SOCIALS);
+
+    if (!wantsEmail && !wantsPhone && !wantsPhones && !wantsSocials) {
+      return items;
+    }
+
+    const targets = (items || []).filter((item: any) => {
+      if (!item?.website) return false;
+      const needsEmail = wantsEmail && !item.email;
+      const needsPhone = wantsPhone && !item.phone;
+      const needsPhones = wantsPhones && !item.phones;
+      const needsSocials = wantsSocials && !item.socials;
+      return needsEmail || needsPhone || needsPhones || needsSocials;
+    });
     if (targets.length === 0) return items;
 
     const urls = Array.from(new Set(targets.map((item: any) => item.website.trim()).filter(Boolean)));
@@ -359,9 +347,10 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
         return {
           ...item,
-          email: !item.email && r.email ? r.email : item.email,
-          phone: !item.phone && r.phones?.[0] ? r.phones[0] : item.phone,
-          phones: r.phones?.length ? r.phones.join(', ') : item.phones,
+          email: wantsEmail && !item.email && r.email ? r.email : item.email,
+          phone: wantsPhone && !item.phone && r.phones?.[0] ? r.phones[0] : item.phone,
+          phones: wantsPhones && !item.phones && r.phones?.length ? r.phones.join(', ') : item.phones,
+          socials: wantsSocials && !item.socials && r.socials?.length ? r.socials.join(', ') : item.socials,
         };
       });
 
@@ -412,105 +401,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
       await extract({ page, extractWebsites, next: true });
     },
-    updateDiscoverQuery: (query: string) => {
-      setDiscoverQueryInput(query);
-      setState(prev => ({ ...prev, discover_query: query }));
-      storage.update(s => ({ ...s, discover_query: query.trim() }));
-      sendBackgroundEvent({
-        type: BACKGROUND_EVENTS.SET_STORE,
-        payload: { store: { discover_query: query.trim() } },
-      });
-    },
-    updateDiscoverGridSize: (size: number) => {
-      setState(prev => ({ ...prev, discover_grid_size: size }));
-      storage.update(s => ({ ...s, discover_grid_size: size }));
-      sendBackgroundEvent({
-        type: BACKGROUND_EVENTS.SET_STORE,
-        payload: { store: { discover_grid_size: size } },
-      });
-    },
-    discover: async () => {
-      if (platform !== DATA_PLATFORMS.GOOGLE_MAPS) return;
-
-      const query = await getGoogleMapsConfig().catch(() => null);
-      if (!query || !query.lat || !query.long) {
-        console.warn('[GeoLeadScraper] Could not determine coordinates for Discover mode');
-        return;
-      }
-
-      const gridSize = state.discover_grid_size || 4;
-      const totalTiles = gridSize * gridSize;
-      const queryKeyword =
-        state.discover_query && state.discover_query.trim().length > 0 ? state.discover_query.trim() : undefined;
-
-      controllerRef.current = new AbortController();
-      setIsDiscoverMode(true);
-      setState(state => ({
-        ...state,
-        initiated: true,
-        extracting: true,
-        completed: false,
-        paused: false,
-        results: 0,
-        data: [],
-      }));
-
-      setDiscoverProgress({
-        currentTile: 0,
-        totalTiles,
-        totalUnique: 0,
-        newInTile: 0,
-        percent: 0,
-      });
-
-      try {
-        const { data } = await discoverGoogleMapsGrid({
-          centerLat: query.lat,
-          centerLng: query.long,
-          zoom: query.zoom,
-          width: query.width,
-          height: query.height,
-          language: query.language,
-          region: query.region,
-          psi: query.psi,
-          gridSize,
-          zoomOffset: 1,
-          queryKeyword,
-          controller: controllerRef.current,
-          onProgress: p => setDiscoverProgress(p),
-          onUpdate: items => {
-            setState(prev => ({
-              ...prev,
-              data: items,
-              results: items.length,
-            }));
-          },
-        });
-
-        setState(prev => ({
-          ...prev,
-          data,
-          results: data.length,
-          extracting: false,
-          completed: true,
-          paused: false,
-        }));
-      } catch (err) {
-        console.error('[GeoLeadScraper] Discover failed:', err);
-        setState(prev => ({ ...prev, extracting: false, completed: true }));
-      } finally {
-        await sleep(500);
-        setDiscoverProgress(null);
-        setIsDiscoverMode(false);
-      }
-    },
     reset: () => {
-      if (controllerRef.current) controllerRef.current.abort();
-      setDiscoverProgress(null);
-      setIsDiscoverMode(false);
-      setShowDiscoverSettings(false);
-      setEnrichmentProgress(null);
-
       setState(state => ({
         ...state,
         initiated: false,
@@ -549,16 +440,24 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
         let exportItems = state.data || [];
         if (shouldEnrich) {
-          exportItems = await enrichMissingContacts(exportItems);
+          exportItems = await enrichMissingContacts(exportItems, fields);
         }
 
-        // Build each row using ONLY the selected fields, ensuring empty fields are preserved
+        const isTabular = [DATA_EXPORT_FORMATS.CSV, DATA_EXPORT_FORMATS.XLSX].includes(format as any);
+
+        // Build each row using ONLY the selected fields.
+        // For tabular formats (CSV/XLSX), ensure missing fields are populated with empty strings for proper alignment.
+        // For JSON, leave unpopulated fields omitted.
         const data =
           exportItems.map(item => {
             const result: { [key: string]: number | string | boolean } = {};
             for (const field of fields) {
               const val = (item as Record<string, any>)[field];
-              result[field] = val !== undefined && val !== null ? val : '';
+              if (val !== undefined && val !== null) {
+                result[field] = val;
+              } else if (isTabular) {
+                result[field] = '';
+              }
             }
             return result;
           }) || [];
@@ -654,16 +553,12 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                 <div className="w-full flex flex-col">
                   <div className="w-full flex flex-row justify-between items-center">
                     <Logo size="sm" />
-                    <div>{(extracting || enrichmentProgress !== null || discoverProgress !== null) && <Spinner />}</div>
+                    <div>{(extracting || enrichmentProgress !== null) && <Spinner />}</div>
                   </div>
                   <div className="mt-4 w-full flex flex-col gap-2 text-sm">
                     {extracting ? (
                       <div>
-                        <span>
-                          {isDiscoverMode
-                            ? `Discovering area (${results} places found)`
-                            : `Extracting ${results >= 1 ? `(${results})` : '..'}`}
-                        </span>
+                        <span>Extracting {results >= 1 ? `(${results})` : '..'}</span>
                       </div>
                     ) : initiated ? (
                       <div>
@@ -671,32 +566,6 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                       </div>
                     ) : (
                       <></>
-                    )}
-
-                    {/* Live Progress Bar during Grid Discovery */}
-                    {discoverProgress !== null && (
-                      <div className="mt-2 w-full flex flex-col gap-1.5 p-2.5 bg-blue-50/70 rounded-md border border-blue-200 shadow-sm">
-                        <div className="flex justify-between items-center text-xs font-semibold text-blue-900">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                            Discovering {state.discover_grid_size || 4}x{state.discover_grid_size || 4} Grid...
-                          </span>
-                          <span className="text-blue-700 font-bold">
-                            Tile {discoverProgress.currentTile} / {discoverProgress.totalTiles} ({discoverProgress.percent}%)
-                          </span>
-                        </div>
-                        <div className="w-full bg-blue-100 rounded-full h-2 overflow-hidden">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                            style={{
-                              width: `${discoverProgress.percent}%`,
-                            }}
-                          />
-                        </div>
-                        <span className="text-[11px] text-blue-700/80 font-medium">
-                          Found {discoverProgress.totalUnique} unique places so far...
-                        </span>
-                      </div>
                     )}
 
                     {/* Live Progress Bar during enrichment */}
@@ -747,17 +616,17 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                                 variant="secondary"
                                 size="sm"
                                 onClick={handlers.export}
-                                disabled={enrichmentProgress !== null || discoverProgress !== null}>
+                                disabled={enrichmentProgress !== null}>
                                 {enrichmentProgress !== null
                                   ? `Enriching (${enrichmentProgress.current}/${enrichmentProgress.total})...`
                                   : `Export results (${results})`}
                               </Button>
-                              {platform === DATA_PLATFORMS.GOOGLE_MAPS && !completed && !isDiscoverMode && (
+                              {platform === DATA_PLATFORMS.GOOGLE_MAPS && !completed && (
                                 <Button
                                   variant="secondary"
                                   size="sm"
                                   onClick={handlers.resume}
-                                  disabled={enrichmentProgress !== null || discoverProgress !== null}>
+                                  disabled={enrichmentProgress !== null}>
                                   Resume
                                 </Button>
                               )}
@@ -765,7 +634,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                                 variant="secondary"
                                 size="sm"
                                 onClick={handlers.reset}
-                                disabled={enrichmentProgress !== null || discoverProgress !== null}>
+                                disabled={enrichmentProgress !== null}>
                                 Reset
                               </Button>
                             </>
@@ -773,138 +642,13 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                         </Stack>
                       ) : (
                         <Stack>
-                          {platform === DATA_PLATFORMS.GOOGLE_MAPS && (
-                            <div className="flex flex-col gap-1.5 w-full">
-                              <div className="flex flex-row items-center gap-1.5 w-full">
-                                <Button
-                                  variant="primary"
-                                  size="sm"
-                                  onClick={handlers.discover}
-                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm flex items-center justify-center gap-1.5 py-1.5 text-xs">
-                                  🧭 Discover Area ({state.discover_grid_size || 4}x{state.discover_grid_size || 4} Grid)
-                                </Button>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowDiscoverSettings(prev => !prev)}
-                                  title="Discover settings (keywords & grid)"
-                                  className={twMerge(
-                                    'w-8 h-8 shrink-0 flex items-center justify-center rounded border transition-colors shadow-sm cursor-pointer',
-                                    showDiscoverSettings
-                                      ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
-                                      : 'bg-white hover:bg-neutral-50 border-neutral-300 text-neutral-600 hover:text-neutral-900',
-                                  )}>
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="w-4 h-4">
-                                    <circle cx="11" cy="11" r="8" />
-                                    <path d="m21 21-4.3-4.3" />
-                                  </svg>
-                                </button>
-                              </div>
-
-                              {showDiscoverSettings && (
-                                <div className="w-full p-2.5 bg-neutral-50 rounded-md border border-neutral-300/80 shadow-sm flex flex-col gap-2.5 text-xs text-neutral-700">
-                                  <div className="flex justify-between items-center font-semibold text-neutral-800 border-b border-neutral-200 pb-1.5">
-                                    <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-neutral-500 font-bold">
-                                      <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        width="13"
-                                        height="13"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2.2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="w-3.5 h-3.5 text-emerald-600">
-                                        <circle cx="11" cy="11" r="8" />
-                                        <path d="m21 21-4.3-4.3" />
-                                      </svg>
-                                      Discover Settings
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => setShowDiscoverSettings(false)}
-                                      className="text-neutral-400 hover:text-neutral-600 text-xs px-1 py-0.5 rounded hover:bg-neutral-200 cursor-pointer">
-                                      ✕
-                                    </button>
-                                  </div>
-
-                                  {/* Keywords input */}
-                                  <div className="flex flex-col gap-1">
-                                    <label className="font-semibold text-neutral-700 text-[11px]">
-                                      Target Keywords (optional):
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={discoverQueryInput}
-                                      onFocus={() => {
-                                        isTypingQueryRef.current = true;
-                                      }}
-                                      onChange={e => {
-                                        isTypingQueryRef.current = true;
-                                        handlers.updateDiscoverQuery(e.target.value);
-                                      }}
-                                      onBlur={e => {
-                                        isTypingQueryRef.current = false;
-                                        handlers.updateDiscoverQuery(e.target.value);
-                                      }}
-                                      placeholder="e.g. firmalar, sanayi, restoran..."
-                                      className="w-full px-2 py-1 bg-white border border-neutral-300 rounded text-xs text-neutral-800 focus:outline-none focus:border-emerald-500 shadow-inner"
-                                    />
-                                    <span className="text-[10px] text-neutral-500">
-                                      Empty = auto discover all businesses in area
-                                    </span>
-                                  </div>
-
-                                  {/* Grid size selection (3x3, 4x4, 6x6) */}
-                                  <div className="flex flex-col gap-1">
-                                    <label className="font-semibold text-neutral-700 text-[11px]">
-                                      Scan Grid Area:
-                                    </label>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                      {[3, 4, 6].map(size => {
-                                        const isSelected = (state.discover_grid_size || 4) === size;
-                                        const tileCount = size * size;
-                                        return (
-                                          <button
-                                            key={size}
-                                            type="button"
-                                            onClick={() => handlers.updateDiscoverGridSize(size)}
-                                            className={twMerge(
-                                              'py-1 px-1 rounded text-center border font-medium transition-all text-xs cursor-pointer flex flex-col items-center justify-center',
-                                              isSelected
-                                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs font-semibold'
-                                                : 'bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100',
-                                            )}>
-                                            <span>{size}x{size}</span>
-                                            <span className={twMerge('text-[9px]', isSelected ? 'text-emerald-100' : 'text-neutral-400')}>
-                                              {tileCount} tiles
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
                           <Button variant="secondary" size="sm" onClick={handlers.extractStartClick}>
-                            Start extracting (Search)
+                            Start extracting
                           </Button>
                         </Stack>
                       )}
                     </div>
-                    {!initiated && (
+                    {!initiated && state.enrich_missing && (
                       <span className="mt-1 text-xs text-neutral-500">
                         ✓ Standalone contact enrichment active
                       </span>
