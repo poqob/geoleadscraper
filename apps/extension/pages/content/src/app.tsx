@@ -15,6 +15,8 @@ import {
   exportResults,
   sleep,
   extractWebsiteResults,
+  discoverGoogleMapsGrid,
+  type IDiscoverProgress,
 } from '@chrome-extension/shared/lib';
 import { Button, Stack, Spinner, AppProvider, Logo } from '@chrome-extension/shared/components';
 import {
@@ -112,6 +114,8 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
   const [loading, setLoading] = useState<boolean>(true);
   const [enrichmentProgress, setEnrichmentProgress] = useState<{ current: number; total: number } | null>(null);
+  const [discoverProgress, setDiscoverProgress] = useState<IDiscoverProgress | null>(null);
+  const [isDiscoverMode, setIsDiscoverMode] = useState<boolean>(false);
 
   const stateRef = useRef(state);
   const controllerRef = useRef<AbortController | null>(null);
@@ -385,7 +389,81 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
       await extract({ page, extractWebsites, next: true });
     },
+    discover: async () => {
+      if (platform !== DATA_PLATFORMS.GOOGLE_MAPS) return;
+
+      const query = await getGoogleMapsConfig().catch(() => null);
+      if (!query || !query.lat || !query.long) {
+        console.warn('[GeoLeadScraper] Could not determine coordinates for Discover mode');
+        return;
+      }
+
+      controllerRef.current = new AbortController();
+      setIsDiscoverMode(true);
+      setState(state => ({
+        ...state,
+        initiated: true,
+        extracting: true,
+        completed: false,
+        paused: false,
+        results: 0,
+        data: [],
+      }));
+
+      setDiscoverProgress({
+        currentTile: 0,
+        totalTiles: 16,
+        totalUnique: 0,
+        newInTile: 0,
+        percent: 0,
+      });
+
+      try {
+        const { data } = await discoverGoogleMapsGrid({
+          centerLat: query.lat,
+          centerLng: query.long,
+          zoom: query.zoom,
+          width: query.width,
+          height: query.height,
+          language: query.language,
+          region: query.region,
+          psi: query.psi,
+          gridSize: 4,
+          zoomOffset: 1,
+          controller: controllerRef.current,
+          onProgress: p => setDiscoverProgress(p),
+          onUpdate: items => {
+            setState(prev => ({
+              ...prev,
+              data: items,
+              results: items.length,
+            }));
+          },
+        });
+
+        setState(prev => ({
+          ...prev,
+          data,
+          results: data.length,
+          extracting: false,
+          completed: true,
+          paused: false,
+        }));
+      } catch (err) {
+        console.error('[GeoLeadScraper] Discover failed:', err);
+        setState(prev => ({ ...prev, extracting: false, completed: true }));
+      } finally {
+        await sleep(500);
+        setDiscoverProgress(null);
+        setIsDiscoverMode(false);
+      }
+    },
     reset: () => {
+      if (controllerRef.current) controllerRef.current.abort();
+      setDiscoverProgress(null);
+      setIsDiscoverMode(false);
+      setEnrichmentProgress(null);
+
       setState(state => ({
         ...state,
         initiated: false,
@@ -529,12 +607,16 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                 <div className="w-full flex flex-col">
                   <div className="w-full flex flex-row justify-between items-center">
                     <Logo size="sm" />
-                    <div>{(extracting || enrichmentProgress !== null) && <Spinner />}</div>
+                    <div>{(extracting || enrichmentProgress !== null || discoverProgress !== null) && <Spinner />}</div>
                   </div>
                   <div className="mt-4 w-full flex flex-col gap-2 text-sm">
                     {extracting ? (
                       <div>
-                        <span>Extracting {results >= 1 ? `(${results})` : '..'}</span>
+                        <span>
+                          {isDiscoverMode
+                            ? `Discovering area (${results} places found)`
+                            : `Extracting ${results >= 1 ? `(${results})` : '..'}`}
+                        </span>
                       </div>
                     ) : initiated ? (
                       <div>
@@ -542,6 +624,32 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                       </div>
                     ) : (
                       <></>
+                    )}
+
+                    {/* Live Progress Bar during 4x4 Grid Discovery */}
+                    {discoverProgress !== null && (
+                      <div className="mt-2 w-full flex flex-col gap-1.5 p-2.5 bg-blue-50/70 rounded-md border border-blue-200 shadow-sm">
+                        <div className="flex justify-between items-center text-xs font-semibold text-blue-900">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                            Discovering 4x4 Grid...
+                          </span>
+                          <span className="text-blue-700 font-bold">
+                            Tile {discoverProgress.currentTile} / {discoverProgress.totalTiles} ({discoverProgress.percent}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-blue-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                            style={{
+                              width: `${discoverProgress.percent}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-[11px] text-blue-700/80 font-medium">
+                          Found {discoverProgress.totalUnique} unique places so far...
+                        </span>
+                      </div>
                     )}
 
                     {/* Live Progress Bar during enrichment */}
@@ -592,17 +700,17 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                                 variant="secondary"
                                 size="sm"
                                 onClick={handlers.export}
-                                disabled={enrichmentProgress !== null}>
+                                disabled={enrichmentProgress !== null || discoverProgress !== null}>
                                 {enrichmentProgress !== null
                                   ? `Enriching (${enrichmentProgress.current}/${enrichmentProgress.total})...`
                                   : `Export results (${results})`}
                               </Button>
-                              {platform === DATA_PLATFORMS.GOOGLE_MAPS && !completed && (
+                              {platform === DATA_PLATFORMS.GOOGLE_MAPS && !completed && !isDiscoverMode && (
                                 <Button
                                   variant="secondary"
                                   size="sm"
                                   onClick={handlers.resume}
-                                  disabled={enrichmentProgress !== null}>
+                                  disabled={enrichmentProgress !== null || discoverProgress !== null}>
                                   Resume
                                 </Button>
                               )}
@@ -610,7 +718,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                                 variant="secondary"
                                 size="sm"
                                 onClick={handlers.reset}
-                                disabled={enrichmentProgress !== null}>
+                                disabled={enrichmentProgress !== null || discoverProgress !== null}>
                                 Reset
                               </Button>
                             </>
@@ -618,8 +726,17 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                         </Stack>
                       ) : (
                         <Stack>
+                          {platform === DATA_PLATFORMS.GOOGLE_MAPS && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={handlers.discover}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm flex items-center justify-center gap-1.5">
+                              🧭 Discover Area (4x4 Grid)
+                            </Button>
+                          )}
                           <Button variant="secondary" size="sm" onClick={handlers.extractStartClick}>
-                            Start extracting
+                            Start extracting (Search)
                           </Button>
                         </Stack>
                       )}
