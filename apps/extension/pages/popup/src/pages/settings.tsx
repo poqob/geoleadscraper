@@ -42,7 +42,22 @@ const Page = () => {
 const SettingsGeneralView = () => {
   const store = useStore();
 
-  const { export_format, auto_download, backend_url, enrich_missing } = store.state || {};
+  const {
+    export_format,
+    auto_download,
+    backend_url,
+    enrich_missing,
+    discover_query,
+    discover_grid_size,
+  } = store.state || {};
+
+  const [discoverQuery, setDiscoverQuery] = useState(discover_query || '');
+
+  useEffect(() => {
+    if (discover_query !== undefined) {
+      setDiscoverQuery(discover_query);
+    }
+  }, [discover_query]);
 
   const handlers = {
     onFormatChange: (format: string) => {
@@ -56,6 +71,12 @@ const SettingsGeneralView = () => {
     },
     onBackendChange: (url: string): void => {
       store.update(state => ({ ...state, backend_url: url.trim() }));
+    },
+    onDiscoverQueryChange: (query: string): void => {
+      store.update(state => ({ ...state, discover_query: query.trim() }));
+    },
+    onDiscoverGridSizeChange: (gridSize: number): void => {
+      store.update(state => ({ ...state, discover_grid_size: gridSize }));
     },
   };
 
@@ -98,6 +119,37 @@ const SettingsGeneralView = () => {
         />
         <p className="mt-1 text-xs text-neutral-500">
           The extension extracts contacts directly inside your browser. Optional: you can connect a local Puppeteer backend for advanced JS rendering.
+        </p>
+      </div>
+      <div>
+        <span>5. Discover Area search keywords (optional).</span>
+        <input
+          type="text"
+          spellCheck={false}
+          placeholder="e.g. firmalar, sanayi, restoran, tekstil..."
+          value={discoverQuery}
+          onChange={e => setDiscoverQuery(e.target.value)}
+          onBlur={e => handlers.onDiscoverQueryChange(e.target.value)}
+          className="mt-2 w-full rounded border border-neutral-300 px-2 py-1 text-sm outline-none focus:border-neutral-500"
+        />
+        <p className="mt-1 text-xs text-neutral-500">
+          Keywords queried in the background during Area Discovery. Leave empty to automatically discover all businesses in the map view.
+        </p>
+      </div>
+      <div>
+        <span>6. Discover Area grid size.</span>
+        <div className="mt-2">
+          <RadioGroup.Root
+            className="flex flex-row gap-3"
+            value={String(discover_grid_size || 4)}
+            onValueChange={(val: string) => handlers.onDiscoverGridSizeChange(Number(val))}>
+            <RadioGroup.Item id="grid-3" value="3" label="3x3 (9 tiles)" />
+            <RadioGroup.Item id="grid-4" value="4" label="4x4 (16 tiles)" />
+            <RadioGroup.Item id="grid-6" value="6" label="6x6 (36 tiles)" />
+          </RadioGroup.Root>
+        </div>
+        <p className="mt-1 text-xs text-neutral-500">
+          Scanning density around your current map view (4x4 is recommended).
         </p>
       </div>
     </div>
