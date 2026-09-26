@@ -1,6 +1,7 @@
 import { IGoogleMapsExtractItem, fetchGoogleMapsResults } from './extract';
 import { altitude } from './geo';
 import { sleep, randomize } from './interval';
+import { AdaptiveRateLimiter } from './rate-limiter';
 
 export interface IGridTile {
   index: number;
@@ -37,6 +38,9 @@ export interface IDiscoverGridOptions {
   controller: AbortController;
   onProgress?: (progress: IDiscoverProgress) => void;
   onUpdate?: (items: IGoogleMapsExtractItem[]) => void;
+  onCooldownChange?: (coolingDown: boolean, reason?: string) => void;
+  onTileStatusChange?: (tileIndex: number, status: 'pending' | 'scanning' | 'completed', newItemsCount?: number) => void;
+  onTilesGenerated?: (tiles: IGridTile[]) => void;
 }
 
 /**
@@ -158,10 +162,12 @@ export async function discoverGoogleMapsGrid(
     gridSize = 4,
     queryKeyword,
     activeMapSearch,
-    delayMs = 1200,
     controller,
     onProgress,
     onUpdate,
+    onCooldownChange,
+    onTileStatusChange,
+    onTilesGenerated,
   } = options;
 
   // 1. Determine search keyword(s):
@@ -189,6 +195,13 @@ export async function discoverGoogleMapsGrid(
     gridSize,
   });
 
+  onTilesGenerated?.(tiles);
+
+  const rateLimiter = new AdaptiveRateLimiter({
+    controller,
+    onCooldownChange,
+  });
+
   const uniqueMap = new Map<string, IGoogleMapsExtractItem>();
 
   const getDedupeKey = (item: IGoogleMapsExtractItem): string => {
@@ -203,6 +216,8 @@ export async function discoverGoogleMapsGrid(
       break;
     }
 
+    onTileStatusChange?.(tile.index, 'scanning');
+
     try {
       let newInTile = 0;
 
@@ -213,41 +228,51 @@ export async function discoverGoogleMapsGrid(
         const maxPagesPerTile = 4; // up to 80 results per tile for high density industrial zones
 
         while (page <= maxPagesPerTile && !controller.signal.aborted) {
-          const res = await fetchGoogleMapsResults({
-            search: searchKw,
-            lat: tile.lat,
-            long: tile.lng,
-            alt: tile.alt,
-            page,
-            take: 20,
-            language,
-            region,
-            psi,
-            width,
-            height,
-          });
+          await rateLimiter.wait();
+          if (controller.signal.aborted) break;
 
-          if (res.data && res.data.length > 0) {
-            for (const item of res.data) {
-              const key = getDedupeKey(item);
-              if (!uniqueMap.has(key)) {
-                uniqueMap.set(key, item);
-                newInTile++;
+          try {
+            const res = await fetchGoogleMapsResults({
+              search: searchKw,
+              lat: tile.lat,
+              long: tile.lng,
+              alt: tile.alt,
+              page,
+              take: 20,
+              language,
+              region,
+              psi,
+              width,
+              height,
+            });
+
+            rateLimiter.recordSuccess();
+
+            if (res.data && res.data.length > 0) {
+              for (const item of res.data) {
+                const key = getDedupeKey(item);
+                if (!uniqueMap.has(key)) {
+                  uniqueMap.set(key, item);
+                  newInTile++;
+                }
               }
             }
-          }
 
-          // If this page returned fewer than 20 items, there are no more results for this query in this tile
-          if (!res.results || res.results < 20) {
+            // If this page returned fewer than 20 items, there are no more results for this query in this tile
+            if (!res.results || res.results < 20) {
+              break;
+            }
+
+            page++;
+          } catch (reqErr: any) {
+            console.warn(`[GeoLeadScraper] Tile ${tile.index} page ${page} error:`, reqErr);
+            await rateLimiter.handleRateLimit(reqErr?.message || 'Rate limit');
             break;
-          }
-
-          page++;
-          if (page <= maxPagesPerTile && !controller.signal.aborted) {
-            await sleep(randomize(350));
           }
         }
       }
+
+      onTileStatusChange?.(tile.index, 'completed', newInTile);
 
       const allItems = Array.from(uniqueMap.values());
       const percent = Math.round((tile.index / tiles.length) * 100);
@@ -265,12 +290,9 @@ export async function discoverGoogleMapsGrid(
       if (onUpdate) {
         onUpdate(allItems);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn(`[GeoLeadScraper] Tile ${tile.index} error:`, err);
-    }
-
-    if (!controller.signal.aborted) {
-      await sleep(randomize(delayMs));
+      await rateLimiter.handleRateLimit(err?.message || 'Rate limit');
     }
   }
 

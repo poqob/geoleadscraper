@@ -18,6 +18,7 @@ import {
   discoverGoogleMapsGrid,
   storage,
   type IDiscoverProgress,
+  type IGridTile,
 } from '@chrome-extension/shared/lib';
 import { Button, Stack, Spinner, AppProvider, Logo } from '@chrome-extension/shared/components';
 import {
@@ -31,6 +32,7 @@ import {
 
 import { ContentContext, IContentContextState } from '@/context';
 import { Layout } from '@/layout';
+import { GridOverlay, ITileStatus } from '@/components';
 import { config } from '@chrome-extension/shared';
 
 const { EXTRACT_LIMIT } = config;
@@ -111,6 +113,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     enrich_missing: false,
     discover_query: '',
     discover_grid_size: 4,
+    show_grid_overlay: false,
     export_format: DATA_EXPORT_FORMATS.CSV,
     export_fields: [],
   });
@@ -121,6 +124,10 @@ const App = ({ platform }: { platform: DataPlatform }) => {
   const [isDiscoverMode, setIsDiscoverMode] = useState<boolean>(false);
   const [showDiscoverSettings, setShowDiscoverSettings] = useState<boolean>(false);
   const [discoverQueryInput, setDiscoverQueryInput] = useState<string>('');
+  const [overlayTiles, setOverlayTiles] = useState<IGridTile[]>([]);
+  const [tileStates, setTileStates] = useState<Record<number, ITileStatus>>({});
+  const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
+  const viewportDimsRef = useRef<{ width: number; height: number }>({ width: 1280, height: 800 });
   const isTypingQueryRef = useRef<boolean>(false);
 
   const stateRef = useRef(state);
@@ -275,6 +282,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       enrich_missing,
       discover_query,
       discover_grid_size,
+      show_grid_overlay,
     } = data || {};
 
     const extract_websites = ((export_fields as string[]) || []).some(field =>
@@ -298,6 +306,7 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       enrich_missing: enrich_missing !== undefined ? enrich_missing : true,
       discover_query: isTypingQueryRef.current ? state.discover_query : storedQuery,
       discover_grid_size: storedGridSize,
+      show_grid_overlay: !!show_grid_overlay,
     }));
   };
 
@@ -475,6 +484,11 @@ const App = ({ platform }: { platform: DataPlatform }) => {
         percent: 0,
       });
 
+      viewportDimsRef.current = { width: query.width, height: query.height };
+      setOverlayTiles([]);
+      setTileStates({});
+      setCooldownNotice(null);
+
       try {
         const { data } = await discoverGoogleMapsGrid({
           centerLat: query.lat,
@@ -497,6 +511,14 @@ const App = ({ platform }: { platform: DataPlatform }) => {
               results: items.length,
             }));
           },
+          onTilesGenerated: tiles => setOverlayTiles(tiles),
+          onTileStatusChange: (tileIndex, status, count) =>
+            setTileStates(prev => ({
+              ...prev,
+              [tileIndex]: { status, newItemsCount: count },
+            })),
+          onCooldownChange: (coolingDown, reason) =>
+            setCooldownNotice(coolingDown ? (reason || 'Stabilizing Google rate-limits...') : null),
         });
 
         setState(prev => ({
@@ -522,6 +544,9 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       setIsDiscoverMode(false);
       setShowDiscoverSettings(false);
       setEnrichmentProgress(null);
+      setOverlayTiles([]);
+      setTileStates({});
+      setCooldownNotice(null);
 
       setState(state => ({
         ...state,
@@ -716,6 +741,12 @@ const App = ({ platform }: { platform: DataPlatform }) => {
                         <span className="text-[11px] text-blue-700/80 font-medium">
                           Found {discoverProgress.totalUnique} unique places so far...
                         </span>
+                        {cooldownNotice && (
+                          <div className="mt-1 flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-amber-800 text-[11px] font-medium animate-pulse">
+                            <span>🛡️</span>
+                            <span>{cooldownNotice}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -934,6 +965,15 @@ const App = ({ platform }: { platform: DataPlatform }) => {
               </div>
             </Layout>
           </div>
+        )}
+        {state.show_grid_overlay && isDiscoverMode && (
+          <GridOverlay
+            tiles={overlayTiles}
+            tileStates={tileStates}
+            gridSize={state.discover_grid_size || 4}
+            width={viewportDimsRef.current.width}
+            height={viewportDimsRef.current.height}
+          />
         )}
       </ContentContext.Provider>
     </AppProvider>

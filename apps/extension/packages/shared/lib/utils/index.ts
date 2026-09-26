@@ -9,3 +9,4 @@ export * from './dom';
 export * from './export';
 export * from './reviews';
 export * from './discover';
+export * from './rate-limiter';

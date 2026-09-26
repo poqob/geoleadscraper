@@ -20,6 +20,7 @@ export const storage: AppStorage = {
       enrich_missing: true,
       discover_query: '',
       discover_grid_size: 4,
+      show_grid_overlay: false,
     },
     {
       storageType: StorageType.Local,

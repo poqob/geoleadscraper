@@ -49,6 +49,7 @@ const SettingsGeneralView = () => {
     enrich_missing,
     discover_query,
     discover_grid_size,
+    show_grid_overlay,
   } = store.state || {};
 
   const [discoverQuery, setDiscoverQuery] = useState(discover_query || '');
@@ -89,6 +90,9 @@ const SettingsGeneralView = () => {
     },
     onDiscoverGridSizeChange: (gridSize: number): void => {
       store.update(state => ({ ...state, discover_grid_size: gridSize }));
+    },
+    onGridOverlayChange: (enabled: boolean): void => {
+      store.update(state => ({ ...state, show_grid_overlay: enabled }));
     },
   };
 
@@ -162,6 +166,15 @@ const SettingsGeneralView = () => {
         </div>
         <p className="mt-1 text-xs text-neutral-500">
           Scanning density around your current map view (4x4 is recommended).
+        </p>
+      </div>
+      <div>
+        <span>7. Show live spatial grid overlay on Google Maps.</span>
+        <div className="mt-2">
+          <Switch checked={!!show_grid_overlay} onCheckedChange={handlers.onGridOverlayChange} />
+        </div>
+        <p className="mt-1 text-xs text-neutral-500">
+          Draws transparent spatial grid tiles and live scanning status directly on the Google Maps viewport.
         </p>
       </div>
     </div>

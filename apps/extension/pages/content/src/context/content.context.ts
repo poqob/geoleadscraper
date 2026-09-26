@@ -31,6 +31,8 @@ export interface IContentContextState {
   discover_query?: string;
   /** Grid matrix size for Discover Area mode: 3 (3x3), 4 (4x4), 6 (6x6). Default 4. */
   discover_grid_size?: number;
+  /** Whether to render live spatial grid overlay on Google Maps. Default false. */
+  show_grid_overlay?: boolean;
 }
 
 export interface IContentContext {
@@ -61,6 +63,7 @@ export const ContentContext = createContext<IContentContext>({
     enrich_missing: false,
     discover_query: '',
     discover_grid_size: 4,
+    show_grid_overlay: false,
     request_interval: 5000,
   },
   setContext: () => {},
