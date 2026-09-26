@@ -133,8 +133,9 @@ const App = ({ platform }: { platform: DataPlatform }) => {
   const styles = getStyles({ platform, position });
 
   const extract = async (options?: { page: number; next: boolean; extractWebsites?: boolean }) => {
-    // Website contact enrichment uses the standalone in-browser crawler or backend.
-    const extractWebsites = !!options?.extractWebsites;
+    // Website contact enrichment requires a reachable backend during extraction.
+    // Standalone in-browser crawler runs exclusively before export (Stage 2) to prevent double crawling.
+    const extractWebsites = !!(state.backend_available && options?.extractWebsites);
     const url = document.location.href;
     const page = options?.page ? options.page : stateRef.current.page;
     const limit = autoJobRef.current?.limit || EXTRACT_LIMIT;
@@ -307,10 +308,24 @@ const App = ({ platform }: { platform: DataPlatform }) => {
     setLoading(false);
   };
 
-  const enrichMissingContacts = async (items: any[]): Promise<any[]> => {
-    const targets = (items || []).filter(
-      (item: any) => item?.website && (!item.email || !item.phone),
-    );
+  const enrichMissingContacts = async (items: any[], fields: string[]): Promise<any[]> => {
+    const wantsEmail = fields.includes(DATA_EXPORT_FIELDS.EMAIL);
+    const wantsPhone = fields.includes(DATA_EXPORT_FIELDS.PHONE);
+    const wantsPhones = fields.includes(DATA_EXPORT_FIELDS.PHONES);
+    const wantsSocials = fields.includes(DATA_EXPORT_FIELDS.SOCIALS);
+
+    if (!wantsEmail && !wantsPhone && !wantsPhones && !wantsSocials) {
+      return items;
+    }
+
+    const targets = (items || []).filter((item: any) => {
+      if (!item?.website) return false;
+      const needsEmail = wantsEmail && !item.email;
+      const needsPhone = wantsPhone && !item.phone;
+      const needsPhones = wantsPhones && !item.phones;
+      const needsSocials = wantsSocials && !item.socials;
+      return needsEmail || needsPhone || needsPhones || needsSocials;
+    });
     if (targets.length === 0) return items;
 
     const urls = Array.from(new Set(targets.map((item: any) => item.website.trim()).filter(Boolean)));
@@ -363,9 +378,10 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
         return {
           ...item,
-          email: !item.email && r.email ? r.email : item.email,
-          phone: !item.phone && r.phones?.[0] ? r.phones[0] : item.phone,
-          phones: r.phones?.length ? r.phones.join(', ') : item.phones,
+          email: wantsEmail && !item.email && r.email ? r.email : item.email,
+          phone: wantsPhone && !item.phone && r.phones?.[0] ? r.phones[0] : item.phone,
+          phones: wantsPhones && !item.phones && r.phones?.length ? r.phones.join(', ') : item.phones,
+          socials: wantsSocials && !item.socials && r.socials?.length ? r.socials.join(', ') : item.socials,
         };
       });
 
@@ -420,18 +436,10 @@ const App = ({ platform }: { platform: DataPlatform }) => {
       setDiscoverQueryInput(query);
       setState(prev => ({ ...prev, discover_query: query }));
       storage.update(s => ({ ...s, discover_query: query.trim() }));
-      sendBackgroundEvent({
-        type: BACKGROUND_EVENTS.SET_STORE,
-        payload: { store: { discover_query: query.trim() } },
-      });
     },
     updateDiscoverGridSize: (size: number) => {
       setState(prev => ({ ...prev, discover_grid_size: size }));
       storage.update(s => ({ ...s, discover_grid_size: size }));
-      sendBackgroundEvent({
-        type: BACKGROUND_EVENTS.SET_STORE,
-        payload: { store: { discover_grid_size: size } },
-      });
     },
     discover: async () => {
       if (platform !== DATA_PLATFORMS.GOOGLE_MAPS) return;
@@ -553,16 +561,24 @@ const App = ({ platform }: { platform: DataPlatform }) => {
 
         let exportItems = stateRef.current?.data || state.data || [];
         if (shouldEnrich) {
-          exportItems = await enrichMissingContacts(exportItems);
+          exportItems = await enrichMissingContacts(exportItems, fields);
         }
 
-        // Build each row using ONLY the selected fields, ensuring empty fields are preserved
+        const isTabular = [DATA_EXPORT_FORMATS.CSV, DATA_EXPORT_FORMATS.XLSX].includes(format as any);
+
+        // Build each row using ONLY the selected fields.
+        // For tabular formats (CSV/XLSX), ensure missing fields are populated with empty strings for proper alignment.
+        // For JSON, leave unpopulated fields omitted.
         const data =
           exportItems.map(item => {
             const result: { [key: string]: number | string | boolean } = {};
             for (const field of fields) {
               const val = (item as Record<string, any>)[field];
-              result[field] = val !== undefined && val !== null ? val : '';
+              if (val !== undefined && val !== null) {
+                result[field] = val;
+              } else if (isTabular) {
+                result[field] = '';
+              }
             }
             return result;
           }) || [];

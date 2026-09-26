@@ -66,7 +66,19 @@ const SettingsGeneralView = () => {
     onDownloadChange: (download: boolean): void => {
       store.update(state => ({ ...state, auto_download: download }));
     },
-    onEnrichMissingChange: (enrich: boolean): void => {
+    onEnrichMissingChange: async (enrich: boolean): Promise<void> => {
+      if (enrich && chrome?.permissions?.request) {
+        try {
+          const granted = await chrome.permissions.request({ origins: ['<all_urls>'] });
+          if (!granted) {
+            store.update(state => ({ ...state, enrich_missing: false }));
+            return;
+          }
+        } catch {
+          store.update(state => ({ ...state, enrich_missing: false }));
+          return;
+        }
+      }
       store.update(state => ({ ...state, enrich_missing: enrich }));
     },
     onBackendChange: (url: string): void => {

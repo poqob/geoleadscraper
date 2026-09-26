@@ -1,33 +1,39 @@
 /**
  * In-browser native contact scraper (standalone client-side crawler).
- * Visited via fetch from the Chrome Service Worker with <all_urls> permission.
+ * Visited via fetch from the Chrome Service Worker.
  * No external backend, Node.js or Puppeteer required!
  */
 
-const EMAIL_RE = /[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,24}/g;
-const FILE_EXTENSIONS = /\.(png|jpe?g|gif|svg|webp|css|js|woff2?|ttf|ico)$/i;
-const EXCLUDED_DOMAINS = ['sentry', 'sentry.io', 'domain.com', 'example.com', 'email.com', 'wixpress.com'];
+export const EMAIL_RE = /[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,24}/g;
+export const FILE_EXTENSIONS = /\.(png|jpe?g|gif|svg|webp|css|js|woff2?|ttf|ico)$/i;
+export const EXCLUDED_DOMAINS = ['sentry', 'sentry.io', 'domain.com', 'example.com', 'email.com', 'wixpress.com'];
 
-const PRIORITY_LOCALPARTS = [
+export const PRIORITY_LOCALPARTS = [
   'info',
-  'iletisim',
   'contact',
   'contacts',
   'hello',
-  'merhaba',
-  'sales',
-  'satis',
-  'office',
-  'ofis',
   'support',
-  'destek',
+  'office',
+  'sales',
   'admin',
   'mail',
+  // Multilingual equivalents (DE, ES, IT, FR, TR, PL, etc.)
+  'kontakt',
+  'contacto',
+  'contatti',
+  'kontakty',
+  'iletisim',
+  'satis',
+  'ofis',
+  'destek',
+  'merhaba',
 ];
 
-const CONTACT_LINK_RE = /(?:contact|contacts|iletisim|iletişim|bize-ulasin|bize-ulaşın|about|hakkimizda|hakkımızda|impressum)/i;
+export const CONTACT_LINK_RE =
+  /(?:contact|contacts|kontakt|contacto|contactos|contatti|kontakty|contactez-nous|iletisim|iletişim|bize-ulasin|bize-ulaşın|about|uber-uns|über-uns|hakkimizda|hakkımızda|impressum|mentions-legales)/i;
 
-const SOCIAL_DOMAINS = [
+export const SOCIAL_DOMAINS = [
   'facebook.com',
   'fb.com',
   'instagram.com',
@@ -53,7 +59,7 @@ export function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '').replace(/^mailto:/, '');
 }
 
-function decodeHtmlEntities(str: string): string {
+export function decodeHtmlEntities(str: string): string {
   return str
     .replace(/&amp;/gi, '&')
     .replace(/&#64;|&commat;|&#x40;/gi, '@')
@@ -61,12 +67,15 @@ function decodeHtmlEntities(str: string): string {
     .replace(/&nbsp;/gi, ' ');
 }
 
+/**
+ * Safe deobfuscation: only targets patterns that clearly look like obfuscated email addresses
+ * (e.g. "info [at] example [dot] com"), preventing false positives like "open at 9 dot 30".
+ */
 export function deobfuscate(text: string): string {
-  return text
-    .replace(/\s*[([{]\s*(?:at|@)\s*[)\]}]\s*/gi, '@')
-    .replace(/\s+at\s+/gi, '@')
-    .replace(/\s*[([{]\s*(?:dot|\.)\s*[)\]}]\s*/gi, '.')
-    .replace(/\s+dot\s+/gi, '.');
+  return text.replace(
+    /\b([a-zA-Z0-9._%+-]+)\s*(?:@|\[at\]|\(at\)|\bat\b)\s*([a-zA-Z0-9.-]+)\s*(?:\.|\(dot\)|\[dot\]|\bdot\b)\s*([a-zA-Z]{2,24})\b/gi,
+    '$1@$2.$3',
+  );
 }
 
 export function isValidEmail(email: string): boolean {
@@ -90,7 +99,7 @@ export function bestEmail(emails: string[]): string | undefined {
   return emails[0];
 }
 
-function extractEmailsFromHtml(html: string): string[] {
+export function extractEmailsFromHtml(html: string): string[] {
   const candidates: string[] = [];
 
   // 1. mailto: links (highest reliability)
@@ -123,12 +132,12 @@ function extractEmailsFromHtml(html: string): string[] {
     }
   }
 
-  // 3. Text emails (deobfuscated + entity decoded)
-  const cleanText = deobfuscate(
-    decodeHtmlEntities(
-      html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '),
-    ),
-  );
+  // 3. Text emails (deobfuscated visible text only)
+  const visibleText = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  const cleanText = deobfuscate(decodeHtmlEntities(visibleText));
   const textMatches = cleanText.match(EMAIL_RE) || [];
   for (const em of textMatches) {
     candidates.push(normalizeEmail(em));
@@ -147,30 +156,69 @@ function extractEmailsFromHtml(html: string): string[] {
   return valid;
 }
 
-function extractPhonesFromHtml(html: string): string[] {
+export function extractPhonesFromHtml(html: string): string[] {
   const phones: string[] = [];
 
-  // 1. tel: links
+  // 1. tel: links (highest reliability)
   const telMatches = html.matchAll(/href=["']tel:([^"'\s]+)["']/gi);
   for (const m of telMatches) {
     const raw = decodeURIComponent(m[1]).trim().replace(/[^\d+]/g, '');
-    if (raw.length >= 7) phones.push(raw);
+    if (raw.length >= 7 && raw.length <= 16) {
+      phones.push(raw);
+    }
   }
 
-  // 2. Generic phone patterns (+90 5XX XXX XX XX, 05XX XXX XX XX, etc.)
-  const phoneRegex = /(?:\+90|0)?\s*[1-9]\d{2}\s*\d{3}\s*\d{2}\s*\d{2}/g;
-  const matches = html.match(phoneRegex) || [];
+  // 2. JSON-LD structured data (telephone)
+  const jsonLdBlocks = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  for (const block of jsonLdBlocks) {
+    try {
+      const parsed = JSON.parse(block[1]);
+      const walk = (node: any) => {
+        if (!node) return;
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (typeof node === 'object') {
+          for (const [key, val] of Object.entries(node)) {
+            if (key.toLowerCase() === 'telephone' && typeof val === 'string') {
+              const cleaned = val.trim().replace(/[^\d+]/g, '');
+              if (cleaned.length >= 7 && cleaned.length <= 16) {
+                phones.push(cleaned);
+              }
+            } else {
+              walk(val);
+            }
+          }
+        }
+      };
+      walk(parsed);
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Fallback regex on stripped visible text (NOT raw HTML, avoids timestamps/IDs in scripts/tags)
+  const visibleText = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+
+  // Matches international format: +1 234 567 8900, +49 (0)30 123456, 0212 345 67 89, etc.
+  const phonePattern = /(?:\+?\d{1,3}[\s.-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{2,4}/g;
+  const matches = visibleText.match(phonePattern) || [];
   for (const p of matches) {
-    const clean = p.replace(/\s+/g, '');
-    if (clean.length >= 10 && clean.length <= 13) {
-      phones.push(clean);
+    const digitsOnly = p.replace(/\D/g, '');
+    // Genuine phone numbers usually have 7 to 15 digits and aren't repetitive dummy sequences
+    if (digitsOnly.length >= 7 && digitsOnly.length <= 15 && !/^(\d)\1+$/.test(digitsOnly)) {
+      const clean = p.trim().replace(/\s+/g, ' ');
+      if (!phones.includes(clean)) {
+        phones.push(clean);
+      }
     }
   }
 
   return Array.from(new Set(phones)).slice(0, 5);
 }
 
-function extractSocialsFromHtml(html: string): string[] {
+export function extractSocialsFromHtml(html: string): string[] {
   const socials: string[] = [];
   const hrefMatches = html.matchAll(/href=["'](https?:\/\/[^"'\s>]+)["']/gi);
 
@@ -193,7 +241,7 @@ function extractSocialsFromHtml(html: string): string[] {
   return Array.from(new Set(socials)).slice(0, 10);
 }
 
-function findContactPageUrl(baseUrl: string, html: string): string | null {
+export function findContactPageUrl(baseUrl: string, html: string): string | null {
   try {
     const origin = new URL(baseUrl).origin;
     const aTags = html.matchAll(/<a[^>]*href=["']([^"'#\s]+)["'][^>]*>([\s\S]*?)<\/a>/gi);
@@ -220,7 +268,7 @@ function findContactPageUrl(baseUrl: string, html: string): string | null {
   return null;
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 6000): Promise<string> {
+export async function fetchWithTimeout(url: string, timeoutMs = 6000): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -301,7 +349,7 @@ export async function crawlWebsite(rawUrl: string): Promise<IExtractedContact> {
       socials,
       _exec: Date.now() - startTime,
     };
-  } catch (err) {
+  } catch {
     return {
       url: rawUrl,
       emails: [],
