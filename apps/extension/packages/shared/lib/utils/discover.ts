@@ -30,8 +30,9 @@ export interface IDiscoverGridOptions {
   region?: string;
   psi?: string;
   gridSize?: number; // default 4 (4x4)
-  zoomOffset?: number; // default 1 (1 level deeper zoom)
-  queryKeyword?: string;
+  zoomOffset?: number; // optional custom offset
+  queryKeyword?: string; // explicit query configured by user
+  activeMapSearch?: string; // search query currently active in Google Maps URL
   delayMs?: number;
   controller: AbortController;
   onProgress?: (progress: IDiscoverProgress) => void;
@@ -39,7 +40,36 @@ export interface IDiscoverGridOptions {
 }
 
 /**
- * Generate a 4x4 (or NxN) spatial grid around the current map center in snake traversal order.
+ * Universal fallback keywords across international locales when no search term is present.
+ * Uses broad business/industrial terms to capture factories, manufacturers, companies, and local commerce.
+ */
+export function getFallbackKeyword(language = 'en'): string {
+  const lang = (language || 'en').toLowerCase().split('-')[0];
+  switch (lang) {
+    case 'tr':
+      return 'sanayi fabrika';
+    case 'de':
+      return 'industrie unternehmen';
+    case 'es':
+      return 'empresas industria';
+    case 'fr':
+      return 'entreprises usine';
+    case 'it':
+      return 'aziende industria';
+    case 'nl':
+      return 'bedrijven industrie';
+    case 'pl':
+      return 'firmy przemysl';
+    case 'ru':
+      return 'предприятия заводы';
+    default:
+      return 'businesses industrial';
+  }
+}
+
+/**
+ * Generate an NxN spatial grid strictly bounded within the user's visible viewport
+ * in snake traversal order to minimize camera jump distance.
  */
 export function generateGridTiles({
   centerLat,
@@ -48,7 +78,6 @@ export function generateGridTiles({
   width = 1280,
   height = 800,
   gridSize = 4,
-  zoomOffset = 1,
 }: {
   centerLat: number;
   centerLng: number;
@@ -58,37 +87,42 @@ export function generateGridTiles({
   gridSize?: number;
   zoomOffset?: number;
 }): IGridTile[] {
-  const alt = altitude({ zoom, latitude: centerLat });
-  const groundHeightMeters = alt * 0.45;
-  const groundWidthMeters = groundHeightMeters * (width / Math.max(1, height));
+  // Exact Web Mercator ground coverage for the visible viewport
+  const cosLat = Math.cos((centerLat * Math.PI) / 180);
+  const metersPerPixel = (156543.03392 * Math.max(0.01, cosLat)) / (2 ** zoom);
+  const spanHeightMeters = height * metersPerPixel;
+  const spanWidthMeters = width * metersPerPixel;
+
   const degLatPerMeter = 1 / 111320;
-  const degLngPerMeter = 1 / (111320 * Math.max(0.1, Math.cos((centerLat * Math.PI) / 180)));
+  const degLngPerMeter = 1 / (111320 * Math.max(0.1, cosLat));
 
-  const stepLat = (groundHeightMeters / (gridSize / 2)) * degLatPerMeter;
-  const stepLng = (groundWidthMeters / (gridSize / 2)) * degLngPerMeter;
+  const totalDeltaLat = spanHeightMeters * degLatPerMeter;
+  const totalDeltaLng = spanWidthMeters * degLngPerMeter;
 
-  // Offsets centered around 0 (e.g. for gridSize 4: -1.5, -0.5, 0.5, 1.5)
-  const offsets: number[] = [];
-  for (let i = 0; i < gridSize; i++) {
-    offsets.push(i - (gridSize - 1) / 2);
-  }
+  // Step between tile centers so the entire viewport is evenly covered
+  const stepLat = totalDeltaLat / gridSize;
+  const stepLng = totalDeltaLng / gridSize;
+
+  // Sub-zoom scales with the grid division for dense street-level extraction
+  const subZoom = Math.min(21, Math.round(zoom + Math.log2(gridSize)));
 
   const tiles: IGridTile[] = [];
   let index = 1;
 
   for (let r = 0; r < gridSize; r++) {
-    const rowOffset = offsets[r];
+    // Offset from center: for N=4 -> -1.5, -0.5, 0.5, 1.5; for N=6 -> -2.5, -1.5, -0.5, 0.5, 1.5, 2.5
+    const rowOffset = r + 0.5 - gridSize / 2;
+    // Snake traversal order (left-to-right on even rows, right-to-left on odd rows)
     const isEven = r % 2 === 0;
     const colIndices: number[] = [];
     for (let c = 0; c < gridSize; c++) colIndices.push(c);
-    if (!isEven) colIndices.reverse(); // Snake traversal order
+    if (!isEven) colIndices.reverse();
 
     for (const c of colIndices) {
-      const colOffset = offsets[c];
+      const colOffset = c + 0.5 - gridSize / 2;
       const tileLat = centerLat + rowOffset * stepLat;
       const tileLng = centerLng + colOffset * stepLng;
-      const scanZoom = zoom + zoomOffset;
-      const tileAlt = Math.round(altitude({ zoom: scanZoom, latitude: tileLat }));
+      const tileAlt = Math.round(altitude({ zoom: subZoom, latitude: tileLat }));
 
       tiles.push({
         index: index++,
@@ -97,7 +131,7 @@ export function generateGridTiles({
         lat: tileLat,
         lng: tileLng,
         alt: tileAlt,
-        zoom: scanZoom,
+        zoom: subZoom,
       });
     }
   }
@@ -106,8 +140,8 @@ export function generateGridTiles({
 }
 
 /**
- * Execute 4x4 spatial grid discovery without requiring a manual keyword search.
- * Scans each tile with 1 zoom level deeper and deduplicates all places by place_id / CID.
+ * Execute spatial grid discovery bounded to the current map view.
+ * Scans each tile in snake order, paginates deeply, and deduplicates all places by place_id / CID.
  */
 export async function discoverGoogleMapsGrid(
   options: IDiscoverGridOptions,
@@ -122,21 +156,29 @@ export async function discoverGoogleMapsGrid(
     region = '',
     psi = '',
     gridSize = 4,
-    zoomOffset = 1,
     queryKeyword,
-    delayMs = 1400,
+    activeMapSearch,
+    delayMs = 1200,
     controller,
     onProgress,
     onUpdate,
   } = options;
 
-  // Select generic query based on language if not explicitly provided
-  const searchKeyword =
+  // 1. Determine search keyword(s):
+  // Preference 1: User's explicitly entered target keyword (from magnifying glass popup or settings)
+  // Preference 2: Currently active search query from Google Maps URL
+  // Preference 3: Universal multilingual commercial fallback keyword
+  const rawSearch =
     queryKeyword && queryKeyword.trim().length > 0
       ? queryKeyword.trim()
-      : language.toLowerCase().startsWith('tr')
-        ? 'firmalar'
-        : 'businesses';
+      : activeMapSearch && activeMapSearch.trim().length > 0
+        ? activeMapSearch.trim()
+        : getFallbackKeyword(language);
+
+  // If user entered comma-separated terms (e.g. "tekstil, fabrika"), query each
+  const searchKeywords = rawSearch.includes(',')
+    ? rawSearch.split(',').map(s => s.trim()).filter(Boolean)
+    : [rawSearch];
 
   const tiles = generateGridTiles({
     centerLat,
@@ -145,7 +187,6 @@ export async function discoverGoogleMapsGrid(
     width,
     height,
     gridSize,
-    zoomOffset,
   });
 
   const uniqueMap = new Map<string, IGoogleMapsExtractItem>();
@@ -163,42 +204,21 @@ export async function discoverGoogleMapsGrid(
     }
 
     try {
-      // 1. Fetch page 1 of this tile
-      const res = await fetchGoogleMapsResults({
-        search: searchKeyword,
-        lat: tile.lat,
-        long: tile.lng,
-        alt: tile.alt,
-        page: 1,
-        take: 20,
-        language,
-        region,
-        psi,
-        width,
-        height,
-      });
-
       let newInTile = 0;
-      if (res.data && res.data.length > 0) {
-        for (const item of res.data) {
-          const key = getDedupeKey(item);
-          if (!uniqueMap.has(key)) {
-            uniqueMap.set(key, item);
-            newInTile++;
-          }
-        }
-      }
 
-      // If page 1 was full (20 items), fetch page 2 for deeper coverage if not aborted
-      if (res.results >= 20 && !controller.signal.aborted) {
-        await sleep(randomize(500));
-        if (!controller.signal.aborted) {
-          const page2 = await fetchGoogleMapsResults({
-            search: searchKeyword,
+      for (const searchKw of searchKeywords) {
+        if (controller.signal.aborted) break;
+
+        let page = 1;
+        const maxPagesPerTile = 4; // up to 80 results per tile for high density industrial zones
+
+        while (page <= maxPagesPerTile && !controller.signal.aborted) {
+          const res = await fetchGoogleMapsResults({
+            search: searchKw,
             lat: tile.lat,
             long: tile.lng,
             alt: tile.alt,
-            page: 2,
+            page,
             take: 20,
             language,
             region,
@@ -207,14 +227,24 @@ export async function discoverGoogleMapsGrid(
             height,
           });
 
-          if (page2.data && page2.data.length > 0) {
-            for (const item of page2.data) {
+          if (res.data && res.data.length > 0) {
+            for (const item of res.data) {
               const key = getDedupeKey(item);
               if (!uniqueMap.has(key)) {
                 uniqueMap.set(key, item);
                 newInTile++;
               }
             }
+          }
+
+          // If this page returned fewer than 20 items, there are no more results for this query in this tile
+          if (!res.results || res.results < 20) {
+            break;
+          }
+
+          page++;
+          if (page <= maxPagesPerTile && !controller.signal.aborted) {
+            await sleep(randomize(350));
           }
         }
       }

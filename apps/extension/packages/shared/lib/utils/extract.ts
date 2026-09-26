@@ -358,7 +358,7 @@ export const fetchGoogleMapsResults = async (query: {
   try {
     // const gl = region;
     const lan = language;
-    const offset = page > 1 ? take * page : 0;
+    const offset = (page - 1) * take;
 
     const url = constructGoogleMapsUrl(GOOGLE_BASE_URL, {
       lan,

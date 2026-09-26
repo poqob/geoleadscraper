@@ -486,8 +486,8 @@ const App = ({ platform }: { platform: DataPlatform }) => {
           region: query.region,
           psi: query.psi,
           gridSize,
-          zoomOffset: 1,
           queryKeyword,
+          activeMapSearch: query.search,
           controller: controllerRef.current,
           onProgress: p => setDiscoverProgress(p),
           onUpdate: items => {
