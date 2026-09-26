@@ -17,7 +17,8 @@
     "dev:api": "pnpm --filter mapscan_api start:dev",
     "lint": "turbo lint --continue",
     "type-check": "turbo type-check",
-    "test": "turbo test",
+    "test": "pnpm --filter @chrome-extension/shared test && pnpm --filter chrome-extension test",
+    "test:turbo": "turbo test",
     "clean": "turbo clean && rimraf node_modules"
   },
   "devDependencies": {
