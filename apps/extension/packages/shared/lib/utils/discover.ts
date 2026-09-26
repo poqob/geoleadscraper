@@ -3,6 +3,13 @@ import { altitude } from './geo';
 import { sleep, randomize } from './interval';
 import { AdaptiveRateLimiter } from './rate-limiter';
 
+export interface ITileBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+}
+
 export interface IGridTile {
   index: number;
   row: number;
@@ -11,6 +18,35 @@ export interface IGridTile {
   lng: number;
   alt: number;
   zoom: number;
+  bounds: ITileBounds;
+}
+
+/**
+ * Checks whether a given (latitude, longitude) coordinate falls within the geographic bounding box
+ * of a spatial grid tile, with an optional safety buffer margin to account for building boundaries
+ * and avoid dropping places on border intersections.
+ */
+export function isPointInTileBounds(
+  lat: number | undefined,
+  lng: number | undefined,
+  bounds: ITileBounds,
+  bufferRatio = 0.25,
+): boolean {
+  if (typeof lat !== 'number' || typeof lng !== 'number') return false;
+  if (isNaN(lat) || isNaN(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+
+  const latSpan = Math.abs(bounds.maxLat - bounds.minLat);
+  const lngSpan = Math.abs(bounds.maxLng - bounds.minLng);
+  const latBuffer = latSpan * bufferRatio;
+  const lngBuffer = lngSpan * bufferRatio;
+
+  const minLat = Math.min(bounds.minLat, bounds.maxLat) - latBuffer;
+  const maxLat = Math.max(bounds.minLat, bounds.maxLat) + latBuffer;
+  const minLng = Math.min(bounds.minLng, bounds.maxLng) - lngBuffer;
+  const maxLng = Math.max(bounds.minLng, bounds.maxLng) + lngBuffer;
+
+  return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
 }
 
 export interface IDiscoverProgress {
@@ -114,8 +150,11 @@ export function generateGridTiles({
   let index = 1;
 
   for (let r = 0; r < gridSize; r++) {
-    // Offset from center: for N=4 -> -1.5, -0.5, 0.5, 1.5; for N=6 -> -2.5, -1.5, -0.5, 0.5, 1.5, 2.5
-    const rowOffset = r + 0.5 - gridSize / 2;
+    // Row 0 is the TOP of the screen (North, highest latitude)
+    // Row gridSize-1 is the BOTTOM of the screen (South, lowest latitude)
+    const latOffset = (gridSize - 1 - 2 * r) / 2;
+    const tileLat = centerLat + latOffset * stepLat;
+
     // Snake traversal order (left-to-right on even rows, right-to-left on odd rows)
     const isEven = r % 2 === 0;
     const colIndices: number[] = [];
@@ -123,10 +162,18 @@ export function generateGridTiles({
     if (!isEven) colIndices.reverse();
 
     for (const c of colIndices) {
-      const colOffset = c + 0.5 - gridSize / 2;
-      const tileLat = centerLat + rowOffset * stepLat;
+      // Col 0 is the LEFT of the screen (West, lowest longitude)
+      // Col gridSize-1 is the RIGHT of the screen (East, highest longitude)
+      const colOffset = (2 * c - (gridSize - 1)) / 2;
       const tileLng = centerLng + colOffset * stepLng;
       const tileAlt = Math.round(altitude({ zoom: subZoom, latitude: tileLat }));
+
+      const bounds: ITileBounds = {
+        minLat: tileLat - stepLat / 2,
+        maxLat: tileLat + stepLat / 2,
+        minLng: tileLng - stepLng / 2,
+        maxLng: tileLng + stepLng / 2,
+      };
 
       tiles.push({
         index: index++,
@@ -136,6 +183,7 @@ export function generateGridTiles({
         lng: tileLng,
         alt: tileAlt,
         zoom: subZoom,
+        bounds,
       });
     }
   }
@@ -249,12 +297,29 @@ export async function discoverGoogleMapsGrid(
             rateLimiter.recordSuccess();
 
             if (res.data && res.data.length > 0) {
+              let inTileCountThisPage = 0;
+
               for (const item of res.data) {
+                // Spatial boundary filtering: strictly verify that the place's coordinates
+                // belong within the geographic boundaries of this tile (+25% safety buffer).
+                // Rejects places that Google Maps returns from distant regions or previous searches.
+                if (!isPointInTileBounds(item.latitude, item.longitude, tile.bounds)) {
+                  continue;
+                }
+
+                inTileCountThisPage++;
                 const key = getDedupeKey(item);
                 if (!uniqueMap.has(key)) {
                   uniqueMap.set(key, item);
                   newInTile++;
                 }
+              }
+
+              // If Google returned places on this page, but none of them fell within this tile's
+              // geographic boundaries, Google has expanded into distant regions; break pagination
+              // to save rate-limit quota and avoid pulling irrelevant distant data.
+              if (inTileCountThisPage === 0 && res.data.length > 0) {
+                break;
               }
             }
 
